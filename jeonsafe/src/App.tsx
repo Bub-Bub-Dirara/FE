@@ -15,6 +15,10 @@ const router=createBrowserRouter([
         element: <HomePage />
       },
       {
+        path:'popular',
+        element: <UploadPage />
+      },
+      {
         path: "*",
         element: <ErrorPage />
       }
