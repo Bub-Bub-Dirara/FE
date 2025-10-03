@@ -4,6 +4,7 @@ import RootLayout from './layout/root-layout';
 import ErrorPage from './pages/errorPage';
 import HomePage from './pages/homePage';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import UploadPage from './pages/uploadPage';
 
 const router=createBrowserRouter([
   {
@@ -15,7 +16,7 @@ const router=createBrowserRouter([
         element: <HomePage />
       },
       {
-        path:'popular',
+        path:'uploadpage',
         element: <UploadPage />
       },
       {

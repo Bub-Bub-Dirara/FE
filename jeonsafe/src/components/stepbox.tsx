@@ -1,13 +1,1 @@
-interface StepBoxProps {
-    text : string;
-}
-
-const StepBox = ({text} : StepBoxProps) => {
-    return (
-        <>
-            <div className="rounded">{text}</div>
-        </>
-    )
-}
-
-export default StepBox;
+import { useState } from "react"; interface StepBoxProps { text : string; className?:string; } const StepBox = ({text, className} : StepBoxProps) => { const [pick,setPick]=useState(false); return ( <> <button onClick={() => {setPick(!pick)}} className={flex items-center justify-center text-lg rounded-r-full w-140 h-10 drop-shadow-md mt-8 ${pick ? "bg-[#113F67] text-white" : "bg-[#EAEFF3] text-white"} ${className}}> {text} </button> </> ) } export default StepBox;
