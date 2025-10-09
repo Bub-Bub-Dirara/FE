@@ -3,7 +3,7 @@ import HomeBox from "../components/homebox";
 const HomePage = () => {
     return (
         <div className="w-full">
-            <section className="max-w-[1100px] mx-auto px-6 py-14 mt-16">
+            <section className="max-w-[1100px] mx-auto px-6 py-14 mt-14ㄴ">
                 <h1 className="text-center font-extrabold leading-tight text-[#113F67] text-[40px] md:text-[50px]">
                     <span className="mr-2">“</span>
                     전세 계약, 안전하게 할 수 있을까?
