@@ -29,5 +29,41 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5"
+  },
+  "tailwind": {
+    "theme": {
+      "extend": {
+        "colors": {
+          "primary": {
+            "main": "#113F67",
+            "middle": "#34699A",
+            "light": "#58A0C8"
+          },
+          "secondary": {
+            "yellow_h": "#F3F65F80",
+            "green_h": "#5FF65F80",
+            "red_h": "#FB4D4D80",
+            "great_bg": "#C5DED8",
+            "great_txt": "#40AD73",
+            "iffy_bg": "#DEDDC5",
+            "iffy_txt": "#AD8E40",
+            "bad_bg": "#DEC5C5",
+            "bad_txt": "#8A3333"
+          },
+          "background": {
+            "default": "#EAEFF3",
+            "alt": "#E9ECEF"
+          },
+          "text": {
+            "main": "#1E1E1E",
+            "muted": "#A9A9A9",
+            "inverse": "#ffffff"
+          },
+          "black": {
+            "DEFAULT": "#000000"
+          }
+        }
+      }
+    }
   }
 }
