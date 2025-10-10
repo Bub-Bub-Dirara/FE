@@ -1,12 +1,18 @@
-import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface HomeBoxProps {
     section:string;
     introduce:string;
+    to: string
 }
 
-const HomeBox = ({section,introduce}:HomeBoxProps) => {
-    const [bottonOn,setBottonon]=useState(false);
+const HomeBox = ({section,introduce,to}:HomeBoxProps) => {
+
+    const navigate = useNavigate();
+
+    const handleClick = () => {
+        navigate(to);
+    };
 
     return (
         <div className="w-[420px] h-[260px] box-border p-10
@@ -17,7 +23,7 @@ const HomeBox = ({section,introduce}:HomeBoxProps) => {
                 <p className="mt-5 text-[20px] text-gray-700">{introduce}</p>
             </div>
             <div className="flex justify-start md:justify-end">
-                <button onClick={() => setBottonon(!bottonOn)} className="mt-4 px-4 py-2 rounded bg-[#113F67] text-white hover:bg-[#0e3355]">
+                <button onClick={handleClick} className="mt-4 px-4 py-2 rounded bg-[#113F67] text-white hover:bg-[#0e3355]">
                     Get Started
                 </button>
             </div>
