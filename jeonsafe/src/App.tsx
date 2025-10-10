@@ -1,10 +1,8 @@
 import './App.css'
 import './index.css'
 import RootLayout from './layout/root-layout';
-import ErrorPage from './pages/errorPage';
 import HomePage from './pages/homePage';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import UploadPage from './pages/uploadPage';
 
 const router=createBrowserRouter([
   {
@@ -15,14 +13,6 @@ const router=createBrowserRouter([
         index: true,
         element: <HomePage />
       },
-      {
-        path:'uploadpage',
-        element: <UploadPage />
-      },
-      {
-        path: "*",
-        element: <ErrorPage />
-      }
     ] 
   },
 ]);
