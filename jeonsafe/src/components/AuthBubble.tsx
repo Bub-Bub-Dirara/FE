@@ -26,7 +26,7 @@ export default function AuthBubble({ open, onClose, anchor = "bottom-left" }: Pr
     validate: signupValidate,
   });
 
-    const [showConfirm, setShowConfirm] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [confirmTouched, setConfirmTouched] = useState(false);
   const confirmError =

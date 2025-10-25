@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Bars3Icon, XMarkIcon,UserCircleIcon  } from "@heroicons/react/24/outline";
 import AuthBubble from "./AuthBubble";
+import ChatBubble from "./ChatBubble";
 
 const Navbar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+
   return (
     <div className="flex h-screen">
       <aside className={"bg-[#E9ECEF] w-[60px] h-screen flex flex-col items-center"}>
@@ -23,6 +25,7 @@ const Navbar = () => {
         <Outlet />
       </main>
 
+      <ChatBubble open={menuOpen} onClose={() => setMenuOpen(false)} />
       <AuthBubble open={authOpen} onClose={() => setAuthOpen(false)} anchor="bottom-left" />
     </div>
   );

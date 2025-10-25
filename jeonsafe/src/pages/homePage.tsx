@@ -14,12 +14,12 @@ const HomePage = () => {
                     <HomeBox
                         section="사전 대비"
                         introduce="전세 계약 전이거나 전세 계약을 생각 중이에요!"
-                        to="/preparation"
+                        to="/pre/upload"
                     />
                     <HomeBox
                         section="사후 처리"
                         introduce="전세 사기를 당한 것 같아요."
-                        to="/postprocessing"
+                        to="/post/collect"
                     />
                 </div>
             </section>
