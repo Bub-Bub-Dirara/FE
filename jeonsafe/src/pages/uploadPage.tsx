@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 
-import InfoCard from "../components/upload/InfoCard";
-import SelectedList from "../components/upload/SelectedList";
-import BottomPrompt from "../components/upload/BottomPrompt";
+import InfoCard from "../components/fileload/InfoCard";
+import SelectedList from "../components/fileload/SelectedList";
+import BottomPrompt from "../components/fileload/BottomPrompt";
 import NextStepButton from "../components/NextStepButton";
 
 export default function UploadPage() {
