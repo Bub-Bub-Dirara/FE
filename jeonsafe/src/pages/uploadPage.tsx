@@ -1,45 +1,64 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProgress } from "../stores/useProgress";
-import { PlusIcon } from "@heroicons/react/24/outline";
 
-const UploadPage = () => {
+import InfoCard from "../components/upload/InfoCard";
+import SelectedList from "../components/upload/SelectedList";
+import BottomPrompt from "../components/upload/BottomPrompt";
+import NextStepButton from "../components/NextStepButton";
+
+export default function UploadPage() {
   const { setPos } = useProgress();
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+
   useEffect(() => {
     setPos("pre", 0);
   }, [setPos]);
 
+  const handlePickFile = () => fileInputRef.current?.click();
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const incoming = e.target.files ? Array.from(e.target.files) : [];
+    if (incoming.length === 0) return;
+    setFiles((prev) => [...prev, ...incoming]);
+    e.currentTarget.value = "";
+  };
+
+  const handleRemove = (idx: number) =>
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  const infoTitle = "전세사기 피해를 예방하고 싶으신가요?";
+  const infoLines = [
+    "전세 사기를 예방하기 위해",
+    "계약 체결 전 계약서 검토가 필요해요.",
+    "계약서를 업로드해주시면 위험 요소를 분석해드릴게요!",
+  ];
+
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen bg-white">
-      {/* 상단 안내 문구 */}
-      <div className="mt-20 text-center">
-        <h2 className="text-xl font-semibold text-gray-800">
-          전세사기 피해를 예방하고 싶으신가요?
-        </h2>
-        <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-          전세 사기를 예방하기 위해
-          <br />
-          계약 체결 전 계약서 검토가 필요해요.
-          <br />
-          계약서를 업로드해주시면 위험 요소를 분석해드릴게요!
-        </p>
-      </div>
+    <div className="min-h-screen bg-white flex flex-col">
+      <main className="flex-1 w-full">
+        <div className="mx-auto max-w-4xl px-6 pt-16 pb-8 flex flex-col items-center gap-4">
+          {files.length === 0 ? (
+            <InfoCard title={infoTitle} lines={infoLines} />
+          ) : (
+            <SelectedList files={files} onRemove={handleRemove} height={300} />
+          )}
 
-      {/* 업로드 박스 */}
-      <div className="w-[600px] h-[180px] mt-12 border-2 border-gray-200 rounded-xl flex flex-col items-center justify-center bg-gray-50">
-        <p className="text-gray-400 mb-3">사진, 파일을 업로드 하세요.</p>
-        <button className="border border-gray-300 rounded-full p-2 hover:bg-gray-100 transition">
-          <PlusIcon className="w-6 h-6 text-gray-400" />
-        </button>
-      </div>
+          <BottomPrompt onPick={handlePickFile} />
 
-      {/* 다음 단계 버튼 */}
-      <div className="w-full flex justify-center mb-12">
-        <button className="bg-[#113F67] text-white font-semibold px-8 py-3 rounded-full hover:bg-[#0f3456] transition">
-          다음 단계로 넘어갈까요? ➜
-        </button>
-      </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.png,.jpg,.jpeg,.heic,.doc,.docx"
+            multiple
+            onChange={handleChange}
+          />
+        </div>
+      </main>
+
+      <NextStepButton to="/pre/risk" disabled={files.length === 0} />
     </div>
   );
-};
-
-export default UploadPage;
+}
