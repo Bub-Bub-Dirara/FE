@@ -2,8 +2,15 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Bars3Icon, XMarkIcon,UserCircleIcon  } from "@heroicons/react/24/outline";
 import AuthBubble from "./AuthBubble";
-import ChatBubble from "./ChatBubble";
+import SideDrawer from "./SideDrawer";
 
+import ChatBubble from "./ChatBubble";
+/*
+import ChatBubble from "./ChatBubble";
+<ChatBubble open={menuOpen} onClose={() => { setMenuOpen(false);}}/>
+
+SideDrawer를 위해 빼둠-> 로그인 구현 후 로그인 여부에 따라 렌더링 되게
+*/
 const Navbar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -25,8 +32,28 @@ const Navbar = () => {
         <Outlet />
       </main>
 
-      <ChatBubble open={menuOpen} onClose={() => setMenuOpen(false)} />
       <AuthBubble open={authOpen} onClose={() => setAuthOpen(false)} anchor="bottom-left" />
+      <ChatBubble open={menuOpen} onClose={() => { setMenuOpen(false);}}/>
+      <SideDrawer
+        open={menuOpen}
+        onClose={() => {
+          setMenuOpen(false);
+
+        }}
+        width={320}
+        offsetLeftPx={60}
+        //샘플임
+        preItems={[
+          { id: "1", title: "2025.09.01. 16:34:10" },
+          { id: "2", title: "2025.09.12. 13:22:11" },
+          { id: "3", title: "우리딸 전셋집 구하기" },
+        ]}
+        postItems={[
+          { id: "a", title: "2025.10.01. 14:11:00" },
+          { id: "b", title: "전세사기 피해 상담 기록" },
+        ]}
+      />
+
     </div>
   );
 }
