@@ -13,7 +13,7 @@ export default function CollectPage() {
   const [files, setFiles] = useState<File[]>([]);
 
   useEffect(() => {
-    setPos("pre", 0);
+    setPos("post", 0);
   }, [setPos]);
 
   const handlePickFile = () => fileInputRef.current?.click();
@@ -52,14 +52,14 @@ export default function CollectPage() {
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg,.heic,.doc,.docx"
+            accept=".pdf,.png,.jpg"
             multiple
             onChange={handleChange}
           />
         </div>
       </main>
 
-      <NextStepButton to="/pre/risk" disabled={files.length === 0} />
+      <NextStepButton to="/post/classify" disabled={files.length === 0} />
     </div>
   );
 }

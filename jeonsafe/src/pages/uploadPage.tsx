@@ -51,7 +51,7 @@ export default function UploadPage() {
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg,.heic,.doc,.docx"
+            accept=".pdf,.png,.jpg"
             multiple
             onChange={handleChange}
           />
