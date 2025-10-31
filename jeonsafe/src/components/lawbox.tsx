@@ -51,7 +51,7 @@ const UploadList: React.FC<Props> = ({ docs, activeId, onSelect }) => {
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{doc.name}</div>
                   <div className="text-xs text-gray-500 whitespace-nowrap">
-                    {doc.type.toUpperCase()} • {doc.pages} page{doc.pages > 1 ? "s" : ""}
+                    {doc.type.toUpperCase()}
                   </div>
                 </div>
 
