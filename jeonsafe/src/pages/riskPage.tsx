@@ -1,109 +1,216 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useProgress } from "../stores/useProgress";
 import UploadList from "../components/lawbox";
 import type { Doc } from "../components/lawbox";
 import NextStepButton from "../components/NextStepButton";
 
-const HARDCODED_DOCS: Doc[] = [
-  { id: 1, name: "계약서 PDF", type: "pdf", pages: 3 },
-  { id: 2, name: "신분증 이미지", type: "image", pages: 1 },
-  { id: 3, name: "등기부등본 PDF", type: "pdf", pages: 2 },
-  { id: 4, name: "현장사진1", type: "image", pages: 1 },
-  { id: 5, name: "현장사진2", type: "image", pages: 1 },
-  { id: 6, name: "신분증 이미지", type: "image", pages: 1 },
-  { id: 7, name: "등기부등본 PDF", type: "pdf", pages: 2 },
-  { id: 8, name: "현장사진1", type: "image", pages: 1 },
-  { id: 9, name: "현장사진2", type: "image", pages: 1 },
-  { id: 10, name: "신분증 이미지", type: "image", pages: 1 },
-  { id: 11, name: "등기부등본 PDF", type: "pdf", pages: 2 },
-  { id: 12, name: "현장사진1", type: "image", pages: 1 },
-  { id: 13, name: "현장사진2", type: "image", pages: 3 },
-];
+import { Document, Page, pdfjs } from "react-pdf";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-function PlaceholderPage({ index }: { index: number }) {
-  return (
-    <div className="relative w-[360px] h-[420px] rounded-xl border border-[rgba(17,63,103,1)] bg-white overflow-hidden shadow-sm">
-      <div className="h-8 bg-gray-100 flex items-center justify-between px-3">
-        <span className="text-xs text-gray-500">PDF • Page {index}</span>
-      </div>
+type DocSrcMap = Record<number, string>;
 
-      <div className="p-4 space-y-2 text-[10px] leading-4 text-gray-600 select-none">
-        {Array.from({ length: 26 }).map((_, i) => (
-          <div key={i} className="space-x-1">
-            {Array.from({ length: 28 }).map((__, j) => (
-              <span key={j} className="inline-block bg-gray-200/60 h-2 rounded w-2" />
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <div className="absolute left-4 right-4 top-40 h-10 bg-yellow-200/70 rounded-sm" />
-      <div className="absolute left-4 right-4 top-[210px] bg-gray-100 border text-gray-700 text-xs rounded p-3 leading-5">
-        해당 내용은 제17091호 부동산 실권리자명의 등기에 대한 법률에 의해 사용자에게 불리한 내용이 아닙니다.
-      </div>
-
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[11px] text-gray-600">{index}</div>
-    </div>
-  );
-}
+// ---- 고정 크기 상수 ----
+const PANEL_H = 435;   // 좌/우 칼럼 높이(레이아웃 고정)
+const VIEW_W = 700;    // 우측 미리보기 박스 너비
+const VIEW_H = 340;    // 우측 미리보기 박스 높이
+const INNER_PAD = 16;  // p-4
+const PAGE_WIDTH = VIEW_W - INNER_PAD * 2;
 
 const RiskPage: React.FC = () => {
   const { setPos } = useProgress();
   useEffect(() => setPos("pre", 1), [setPos]);
 
-  const [docs] = useState<Doc[]>(HARDCODED_DOCS);
-  const [activeId, setActiveId] = useState<number>(docs[0].id);
-  const activeDoc = useMemo(() => docs.find((d) => d.id === activeId) || docs[0], [docs, activeId]);
-  const [page, setPage] = useState<number>(1);
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [srcMap, setSrcMap] = useState<DocSrcMap>({});
+  const [activeId, setActiveId] = useState<number | null>(null);
 
-  useEffect(() => setPage(1), [activeId]);
+  const activeDoc = useMemo(
+    () => (activeId == null ? undefined : docs.find((d) => d.id === activeId)),
+    [docs, activeId]
+  );
+  const activeSrc = useMemo(
+    () => (activeId == null ? null : srcMap[activeId] ?? null),
+    [srcMap, activeId]
+  );
+  const activeType = activeDoc?.type;
 
-  const maxPage = activeDoc?.pages ?? 1;
-  const canPrev = page > 1;
-  const canNext = page < maxPage;
+  // 파일 선택
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const openFilePicker = () => fileInputRef.current?.click();
+  const idRef = useRef(1);
+
+  // PDF 페이지
+  const [numPages, setNumPages] = useState<number>(1);
+  const [pageNumber, setPageNumber] = useState<number>(1);
+
+  // 미리보기 박스 스크롤
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (previewRef.current) previewRef.current.scrollTop = 0;
+  }, [pageNumber, activeId]);
+
+  // blob URL 정리
+  useEffect(() => {
+    return () => {
+      Object.values(srcMap).forEach((url) => {
+        if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+      });
+    };
+  }, [srcMap]);
+
+  // 파일 추가
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const incoming = e.target.files ? Array.from(e.target.files) : [];
+    if (incoming.length === 0) return;
+
+    setDocs((prev) => {
+      const next = [...prev];
+      const nextMap: DocSrcMap = { ...srcMap };
+      let lastId: number | null = null;
+
+      for (const f of incoming) {
+        const id = idRef.current++;
+        const url = URL.createObjectURL(f);
+        const isPdf = f.type === "application/pdf";
+        const isImg = f.type.startsWith("image/");
+        const type: Doc["type"] = isPdf ? "pdf" : isImg ? "image" : "other";
+
+        next.push({ id, name: f.name, type, pages: isPdf ? 0 : 1 });
+        nextMap[id] = url;
+        lastId = id;
+      }
+
+      setSrcMap(nextMap);
+      if (lastId != null) {
+        setActiveId(lastId);
+        setPageNumber(1);
+      }
+      return next;
+    });
+
+    e.currentTarget.value = "";
+  };
+
+  const handlePdfLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages);
+    setDocs((prev) => prev.map((d) => (d.id === activeId ? { ...d, pages: numPages } : d)));
+  };
+
+  const canPrev = pageNumber > 1;
+  const canNext = pageNumber < numPages;
 
   return (
-    <div className="w-full h-[calc(100vh-6rem)] bg-neutral-50 p-4 pt-4 overflow-hidden">
-      <div className="mx-auto max-w-5xl grid grid-cols-[240px_minmax(0,1fr)] gap-0 content-start h-full">
-        <UploadList docs={docs} activeId={activeId} onSelect={setActiveId} />
+    <div className="min-h-screen bg-neutral-50 flex flex-col">
+      <main className="flex-1">
+        <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
+          <div
+            className="mx-auto max-w-5xl grid grid-cols-[240px_minmax(0,1fr)] gap-0 items-stretch"
+            style={{ height: PANEL_H }}
+          >
+            <div className="h-full overflow-y-auto overflow-x-hidden">
+              <UploadList
+                docs={docs}
+                activeId={activeId ?? -1}
+                onSelect={(id) => {
+                  setActiveId(id);
+                  setPageNumber(1);
+                }}
+              />
+            </div>
 
-        <div className="rounded-r-lg rounded-l-none border border-gray-300 bg-white flex flex-col border-l h-full overflow-hidden">
-          <div className="px-3 py-2 bg-gray-50">
-            <h2 className="text-sm font-semibold text-gray-800">계약서 PDF</h2>
-          </div>
-          
-          
-          <div className="p-2 flex-1 flex items-center justify-center overflow-auto">
-            <PlaceholderPage index={page} />
-          </div>
+            <div className="h-full rounded-r-lg rounded-l-none border border-gray-300 border-l-0 bg-white flex flex-col overflow-hidden">
+              <div className="px-3 py-2 bg-gray-50 flex items-center justify-between shrink-0">
+                <h2 className="text-sm font-semibold text-gray-800 truncate">
+                  {activeDoc ? activeDoc.name : "문서 내용"}
+                </h2>
+                <div className="shrink-0">
+                  <button
+                    onClick={openFilePicker}
+                    className="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                  >
+                    내 파일로 테스트
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </div>
+              </div>
 
-          <div className="py-4 flex items-center justify-center gap-2 bg-white">
-            <button
-              className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-                canPrev ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"
-              }`}
-              onClick={() => canPrev && setPage(Math.max(1, page - 1))}
-              disabled={!canPrev}
-              aria-label="이전 페이지"
-            >
-              ‹
-            </button>
-            <span className="text-xs text-gray-700 tabular-nums">{page}페이지</span>
-            <button
-              className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-                canNext ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"
-              }`}
-              onClick={() => canNext && setPage(Math.min(maxPage, page + 1))}
-              disabled={!canNext}
-              aria-label="다음 페이지"
-            >
-              ›
-            </button>
+              <div className="flex-1 flex items-center justify-center overflow-hidden">
+                <div
+                  ref={previewRef}
+                  className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-y-auto overflow-x-hidden"
+                  style={{ width: VIEW_W, height: VIEW_H }}
+                >
+                  <div className="p-4">
+                    {activeDoc && activeSrc ? (
+                      activeType === "pdf" ? (
+                        <Document
+                        file={activeSrc}
+                        onLoadSuccess={handlePdfLoadSuccess}
+                        onLoadError={(err) => console.error("PDF 로드 오류:", err)}
+                      >
+                        <Page
+                          pageNumber={pageNumber}
+                          width={PAGE_WIDTH}
+                          renderTextLayer={true}
+                          renderAnnotationLayer={false}
+                          className="selectable-pdf"
+                        />
+                      </Document>
+                      ) : activeType === "image" ? (
+                        <img
+                          src={activeSrc}
+                          alt={activeDoc.name}
+                          style={{ width: PAGE_WIDTH, height: "auto" }}
+                          className="max-w-none border border-gray-300 rounded-lg bg-white"
+                        />
+                      ) : null
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {activeDoc && activeType === "pdf" && (
+                <div className="py-2 flex items-center justify-center gap-2 bg-white shrink-0">
+                  <button
+                    onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+                    disabled={!canPrev}
+                    className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
+                      canPrev ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"
+                    }`}
+                    aria-label="이전 페이지"
+                  >
+                    ‹
+                  </button>
+                  <span className="text-xs text-gray-700 tabular-nums">
+                    {pageNumber} / {numPages}페이지
+                  </span>
+                  <button
+                    onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
+                    disabled={!canNext}
+                    className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
+                      canNext ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"
+                    }`}
+                    aria-label="다음 페이지"
+                  >
+                    ›
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </main>
+
+      <NextStepButton to="/pre/mapping" />
     </div>
-    
   );
 };
 

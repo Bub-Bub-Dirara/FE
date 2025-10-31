@@ -1,1 +1,16 @@
 @import "tailwindcss";
+/* PDF 텍스트 선택 보정 */
+.selectable-pdf .react-pdf__Page__textContent {
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto;        /* 드래그 허용 */
+  z-index: 2;                  /* 캔버스 위로 */
+}
+
+/* 선택 시 하이라이트 가독성 조금 상승 */
+.selectable-pdf .react-pdf__Page__textContent ::selection {
+  background: rgba(17, 63, 103, 0.25);
+}
+
+/* 텍스트 span 자체는 투명하게 렌더링되는게 기본인데,
+   복사/선택만 가능하면 기본값 유지로 충분 */
