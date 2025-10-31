@@ -30,7 +30,7 @@ function RelatedLawSection({ items = mockItems }: { items?: LawItem[] }) {
   const overlayRef = React.useRef<HTMLDivElement | null>(null);
 
   const FOUR_ROW_HEIGHT = 48 * 4 + 12 * 3 + 16;
-  const BORDER = 2;
+  //const BORDER = 2;
   const containerClass = items.length >= 4 ? `max-h-[${FOUR_ROW_HEIGHT}px] overflow-y-auto` : `h-[${FOUR_ROW_HEIGHT}px] overflow-hidden`;
   const fillerCount = Math.max(0, 4 - items.length);
 
