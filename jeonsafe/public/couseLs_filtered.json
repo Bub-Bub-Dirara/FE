@@ -1,0 +1,28 @@
+[
+  {
+    "법령명한글": "민법",
+    "법령ID": "001706",
+    "조문번호": "194",
+    "조문가지번호": "",
+    "조문제목": "간접점유",
+    "조문상세링크": "https://www.law.go.kr/DRF/lawService.do?OC=hagyeong13&target=eflaw&type=JSON&ID=001706&JO=019400",
+    "matchedKeywords": ["임대차", "전세"],
+    "content": "제194조(간접점유) …",
+    "조문시행일자": "20250131",
+    "조문키": "0194001",
+    "detailTarget": "eflaw"
+  },
+  {
+    "법령명한글": "주택임대차보호법",
+    "법령ID": "002431",
+    "조문번호": "1",
+    "조문가지번호": "",
+    "조문제목": "목적",
+    "조문상세링크": "https://www.law.go.kr/DRF/lawService.do?OC=hagyeong13&target=eflaw&type=JSON&ID=002431&JO=000100",
+    "matchedKeywords": ["임대차"],
+    "content": "제1조(목적) …",
+    "조문시행일자": "20250131",
+    "조문키": "0001001",
+    "detailTarget": "eflaw"
+  }
+]

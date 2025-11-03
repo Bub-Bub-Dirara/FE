@@ -12,7 +12,7 @@ import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const PAGE_WIDTH = VIEW_W - 16 * 2; // padding 보정
+const PAGE_WIDTH = VIEW_W - 16 * 2;
 
 export default function RiskPage() {
   const { setPos } = useProgress();
@@ -100,7 +100,6 @@ export default function RiskPage() {
       <main className="flex-1">
         <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
           <TwoPaneViewer left={left} rightHeader={rightHeader} rightFooter={rightFooter}>
-            {/* ⬇️ 가운데 콘텐츠만 갈아끼우면 다른 페이지에서도 그대로 재사용 */}
             {activeDoc && activeSrc ? (
               activeDoc.type === "pdf" ? (
                 <PdfViewer
