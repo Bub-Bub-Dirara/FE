@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../stores/useAuth";
+import { useUI } from "../stores/ui";
 
 interface HomeBoxProps {
     section:string;
@@ -9,8 +11,14 @@ interface HomeBoxProps {
 const HomeBox = ({section,introduce,to}:HomeBoxProps) => {
 
     const navigate = useNavigate();
+    const { isAuthed } = useAuth();
+    const { openChat } = useUI();
 
     const handleClick = () => {
+        if (!isAuthed) {
+        openChat();
+        return;
+        }
         navigate(to);
     };
 
