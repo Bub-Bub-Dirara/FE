@@ -5,9 +5,16 @@ import InfoCard from "../components/fileload/InfoCard";
 import SelectedList from "../components/fileload/SelectedList";
 import BottomPrompt from "../components/fileload/BottomPrompt";
 import NextStepButton from "../components/NextStepButton";
+import { uploadManyViaApi } from "../lib/uploader";
+import type { FileRecord } from "../types/file";
+import { useUploadStore } from "../stores/useUploadStore";
 
 export default function CollectPage() {
   const { setPos } = useProgress();
+  const [, setProgress] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState(false);
+
+  const setUploaded = useUploadStore((s) => s.setUploaded);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -36,6 +43,29 @@ export default function CollectPage() {
     "증명 자료 적절성 판단 및 추가 자료 요청을 드릴게요!",
   ];
 
+  const onBeforeNavigate = async (): Promise<boolean> => {
+    if (files.length === 0) return false;
+    setBusy(true);
+    setProgress({});
+
+    try {
+      const uploaded: FileRecord[] = await uploadManyViaApi(
+        files,
+        "other", // 👈 기타 카테고리로 업로드
+        (name, pct) => setProgress((m) => ({ ...m, [name]: pct }))
+      );
+
+      setUploaded(uploaded);
+      return true;
+    } catch (err) {
+      console.error(err);
+      alert("업로드 중 오류가 발생했습니다. (Network/Server)");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <main className="flex-1 w-full">
@@ -59,7 +89,13 @@ export default function CollectPage() {
         </div>
       </main>
 
-      <NextStepButton to="/post/classify" disabled={files.length === 0} />
+      <NextStepButton
+        to="/post/classify"
+        disabled={busy || files.length === 0}
+        label={busy ? "업로드 중..." : undefined}
+        onBeforeNavigate={onBeforeNavigate}
+      />
+
     </div>
   );
 }

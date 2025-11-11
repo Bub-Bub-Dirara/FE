@@ -14,21 +14,35 @@ import {
   type Buckets, type BucketKey, type Item,
 } from "../types/evidence";
 import { useProgress } from "../stores/useProgress";
+import { useUploadStore } from "../stores/useUploadStore";
 
 export default function ClassifyPage() {
   const { setPos } = useProgress();
   useEffect(() => { setPos("post", 1); }, [setPos]);
 
-  const seed = (n: number, s = 600) =>
-    Array.from({ length: n }, (_, i) => ({ id: `shot-${s + i}`, name: `Screenshot_250826_1234${s + i}.jpg` }));
+  // CollectPage에서 저장한 업로드 결과
+  const uploaded = useUploadStore((s) => s.uploaded);
 
-  const [buckets, setBuckets] = useState<Buckets>({
-    contract: seed(3, 500),
-    sms:      seed(4, 600),
-    deposit:  seed(2, 700),
-    me:       seed(0, 800),
-    landlord: seed(4, 900),
-  });
+  // 빈 버킷 템플릿
+  const emptyBuckets: Buckets = useMemo(() => ({
+    contract: [], sms: [], deposit: [], me: [], landlord: [], other: [],
+  }), []);
+
+  // 버킷 상태 (초기엔 전부 비움)
+  const [buckets, setBuckets] = useState<Buckets>(emptyBuckets);
+
+  // 업로드 항목을 전부 '기타(other)'로 초기 배치
+  useEffect(() => {
+    if (!uploaded || uploaded.length === 0) {
+      setBuckets(emptyBuckets);
+      return;
+    }
+    const others: Item[] = uploaded.map((r) => ({
+      id: String(r.id),
+      name: r.original_filename,
+    }));
+    setBuckets({ ...emptyBuckets, other: others });
+  }, [uploaded, emptyBuckets]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -67,7 +81,6 @@ export default function ClassifyPage() {
       return { ...prev, [from]: newFrom, [to]: newTo };
     });
   };
-
 
   const onDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
 

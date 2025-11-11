@@ -1,5 +1,11 @@
 export type Item = { id: string; name: string };
-export type BucketKey = "contract" | "sms" | "deposit" | "me" | "landlord";
+export type BucketKey =
+  | "contract"
+  | "sms"
+  | "deposit"
+  | "me"
+  | "landlord"
+  | "other";
 export type Buckets = Record<BucketKey, Item[]>;
 
 export const BUCKET_META: Record<BucketKey, { title: string }> = {
@@ -8,8 +14,9 @@ export const BUCKET_META: Record<BucketKey, { title: string }> = {
   deposit:  { title: "입금 내역" },
   me:       { title: "내 정보" },
   landlord: { title: "집주인 정보" },
+  other:    { title: "기타" },
 };
 
 export const BUCKET_ORDER: BucketKey[] = [
-  "contract", "sms", "deposit", "me", "landlord",
+  "contract", "sms", "deposit", "me", "landlord", "other",
 ];
