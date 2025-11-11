@@ -42,7 +42,7 @@ type AuthState = {
   initializeFromStorage: () => void;
 };
 
-const ME_ENDPOINT = "/auth/me";
+const ME_ENDPOINT = "/be/auth/me";
 
 export const useAuth = create<AuthState>()(
   persist(
@@ -61,7 +61,7 @@ export const useAuth = create<AuthState>()(
 
       async login(email, password) {
         const res = await http.post<{ access_token: string; token_type: "bearer" }>(
-          "/auth/login",
+          "/be/auth/login",
           { email, password }
         );
         const token = res.data.access_token;
@@ -76,7 +76,7 @@ export const useAuth = create<AuthState>()(
 
       async logout() {
         try {
-          await http.post("/auth/logout");
+          await http.post("/be/auth/logout");
         } catch {
           /* ignore */
         }

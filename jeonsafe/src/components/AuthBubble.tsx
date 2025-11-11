@@ -86,7 +86,7 @@ export default function AuthBubble({ open, onClose }: Props) {
 
     setErrMsg(""); setInfoMsg(""); setPending(true);
     try {
-      await http.post<{ id: number; email: string }>("/auth/signup", {
+      await http.post<{ id: number; email: string }>("/be/auth/signup", {
         email: signupForm.values.email,
         password: signupForm.values.password,
       });
