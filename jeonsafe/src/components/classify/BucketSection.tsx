@@ -3,6 +3,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import SortableRow from "./SortableRow";
 import type { BucketKey, Item } from "../../types/evidence";
+import type { RatingLabel, AnalyzeItem } from "../../lib/analyzeEvidence";
 
 type Props = {
   id: BucketKey;
@@ -10,12 +11,20 @@ type Props = {
   items: Item[];
   bucketOrder: BucketKey[];
   onMoveItem: (itemId: string, to: BucketKey) => void;
+
+  getRating?: (itemId: string) => RatingLabel | undefined;
+  getAnalysis?: (itemId: string) => AnalyzeItem | undefined;
 };
 
 export default function BucketSection({
-  id, title, items, bucketOrder, onMoveItem,
+  id,
+  title,
+  items,
+  bucketOrder,
+  onMoveItem,
+  getRating,
+  getAnalysis,
 }: Props) {
-
   const { setNodeRef } = useDroppable({ id });
   const itemIds = useMemo(() => items.map((it) => it.id), [items]);
 
@@ -39,6 +48,8 @@ export default function BucketSection({
                 currentBucket={id}
                 bucketOrder={bucketOrder}
                 onMoveTo={(to) => onMoveItem(it.id, to)}
+                rating={getRating?.(it.id)}
+                analysis={getAnalysis?.(it.id)}
               />
             ))}
           </SortableContext>

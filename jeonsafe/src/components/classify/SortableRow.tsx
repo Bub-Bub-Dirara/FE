@@ -3,7 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import type { BucketKey } from "../../types/evidence";
-import { BUCKET_META } from "../../types/evidence";
+import type { RatingLabel, AnalyzeItem } from "../../lib/analyzeEvidence";
 
 type Props = {
   id: string;
@@ -11,18 +11,28 @@ type Props = {
   currentBucket: BucketKey;
   bucketOrder: BucketKey[];
   onMoveTo: (to: BucketKey) => void;
+
+  rating?: RatingLabel;
+  analysis?: AnalyzeItem;
 };
 
 export default function SortableRow({
-  id, name, currentBucket, bucketOrder, onMoveTo,
+  id,
+  name,
+  rating,
+  analysis,
 }: Props) {
   const {
-    attributes, listeners,
-    setNodeRef, setActivatorNodeRef,
-    transform, transition, isDragging,
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
   } = useSortable({ id });
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -30,52 +40,53 @@ export default function SortableRow({
     opacity: isDragging ? 0.6 : 1,
   };
 
-  const targets = bucketOrder.filter((b) => b !== currentBucket);
+  const bgClass =
+    rating === "G"
+      ? "bg-emerald-100"
+      : rating === "M"
+      ? "bg-amber-100"
+      : rating === "B"
+      ? "bg-rose-100"
+      : "bg-gray-100";
 
   return (
-    <li ref={setNodeRef} style={style} className="px-2 relative">
-      <div className="flex items-center justify-between rounded-xl bg-gray-100 px-5 py-3 shadow-sm">
-        <span className="truncate text-[15px] text-gray-800 select-none">{name}</span>
-
-        <button
-          ref={setActivatorNodeRef}
-          {...attributes}
-          {...listeners}
-          type="button"
-          className="ml-3 rounded-md p-1.5 hover:bg-gray-200 active:bg-gray-300 touch-none"
-          title="드래그로 이동하거나 클릭해서 섹션 이동"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen((v) => !v);
-          }}
-        >
-          <ChevronUpDownIcon className="h-4 w-4 text-gray-600" />
-        </button>
-      </div>
-
-      {menuOpen && (
+    <li ref={setNodeRef} style={style} className="px-2">
+      <div
+        className={`w-full rounded-xl shadow-sm border border-gray-200 overflow-hidden ${bgClass}`}
+      >
+        {/* 상단 바 */}
         <div
-          className="absolute right-2 top-12 z-50 w-44 rounded-xl border border-gray-200 bg-white shadow-lg"
-          role="menu"
-          onClick={(e) => e.stopPropagation()}
+          className="flex w-full items-center justify-between px-5 py-3 select-none"
+          onClick={() => setOpen((v) => !v)}
         >
-          <ul className="py-1">
-            {targets.map((b) => (
-              <li key={b}>
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                  onClick={() => { onMoveTo(b); setMenuOpen(false); }}
-                >
-                  {BUCKET_META[b].title}로 이동
-                </button>
-              </li>
-            ))}
-          </ul>
+          <span className="truncate text-[15px] text-gray-800 underline-offset-2 hover:underline">
+            {name}
+          </span>
+
+          {/* 드래그 핸들 */}
+          <div
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()} // 클릭 토글 방지
+            className="ml-3 rounded-md p-1 hover:bg-gray-200 active:bg-gray-300"
+            title="드래그해서 위치를 옮길 수 있어요"
+          >
+            <ChevronUpDownIcon className="h-4 w-4 text-gray-600" />
+          </div>
         </div>
-      )}
+
+        {/* 내용 (GPT 이유) */}
+        {open && analysis && (
+          <div className="border-t border-gray-200 bg-white/90 px-6 py-3 text-sm text-gray-800">
+            <ul className="list-disc pl-5 space-y-1">
+              {analysis.rating.reasons.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </li>
   );
 }
