@@ -14,6 +14,7 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 import { ArrowsUpDownIcon } from "@heroicons/react/24/outline";
 
+
 import NextStepButton from "../components/NextStepButton";
 import BucketSection from "../components/classify/BucketSection";
 import {
@@ -39,7 +40,10 @@ export default function ClassifyPage() {
 
   // CollectPage에서 저장한 업로드 결과
   const uploaded = useUploadStore((s) => s.uploaded);
-
+  const storeAnalysisById = useUploadStore((s) => s.analysisById);
+  const setAnalysisByIdStore = useUploadStore((s) => s.setAnalysisById);
+  
+  
   // 빈 버킷 템플릿
   const emptyBuckets: Buckets = useMemo(
     () => ({
@@ -67,9 +71,57 @@ export default function ClassifyPage() {
     if (!uploaded || uploaded.length === 0) {
       setBuckets(emptyBuckets);
       setAnalysisById({});
+      setAnalysisByIdStore({});
       return;
     }
 
+    // 현재 업로드된 파일 id 리스트
+    const fileIds = uploaded.map((f) => String(f.id));
+
+    // 스토어에 이 파일들 분석 결과가 모두 있는지 확인
+    const hasAllFromStore = fileIds.every((id) => !!storeAnalysisById[id]);
+    
+    // 공통: 분석 결과로 버킷 구성하는 helper
+    const buildBucketsFromAnalysis = (
+      analysisMap: Record<string, AnalyzeItem>,
+    ) => {
+      const nextBuckets: Buckets = {
+        contract: [],
+        sms: [],
+        deposit: [],
+        me: [],
+        landlord: [],
+        other: [],
+      };
+
+      uploaded.forEach((file) => {
+        const id = String(file.id);
+        const ai = analysisMap[id];
+
+        const aiKind = (ai?.kind ?? "other") as BucketKey;
+        const kind: BucketKey = (BUCKET_ORDER as BucketKey[]).includes(aiKind)
+          ? aiKind
+          : "other";
+
+        const item: Item = {
+          id,
+          name: file.original_filename,
+        };
+
+        nextBuckets[kind].push(item);
+      });
+
+      setBuckets(nextBuckets);
+    };
+
+    // 이미 분석 결과가 있으면: API 안 부르고 그걸로 세팅
+    if (hasAllFromStore) {
+      setAnalysisById(storeAnalysisById);
+      buildBucketsFromAnalysis(storeAnalysisById);
+      return;
+    }
+
+    
     const run = async () => {
       try {
         setLoadingAnalysis(true);
@@ -109,6 +161,7 @@ export default function ClassifyPage() {
 
         setBuckets(nextBuckets);
         setAnalysisById(nextAnalysis);
+        setAnalysisByIdStore(nextAnalysis); 
       } catch (e) {
         console.error("analyze error", e);
         setAnalysisError("AI 분석에 실패해서, 일단 전부 ‘기타’에 넣어둘게요.");
@@ -120,13 +173,14 @@ export default function ClassifyPage() {
         }));
         setBuckets({ ...emptyBuckets, other: others });
         setAnalysisById({});
+        setAnalysisByIdStore({}); 
       } finally {
         setLoadingAnalysis(false);
       }
     };
 
     void run();
-  }, [uploaded, emptyBuckets]);
+  }, [uploaded, emptyBuckets,storeAnalysisById, setAnalysisByIdStore]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
