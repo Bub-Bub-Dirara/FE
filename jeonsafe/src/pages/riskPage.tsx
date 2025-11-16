@@ -11,10 +11,23 @@ import { useUploadStore } from "../stores/useUploadStore";
 import { getDownloadUrl, resolveViewUrl } from "../lib/files";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+import {
+  extractRisksForUrl,
+  type RiskySentence,
+  type RiskLabel,
+} from "../lib/extractRisks";
+
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const VIEW_W = 700;
 const PAGE_WIDTH = VIEW_W - 16 * 2;
+
+const RISK_HIGHLIGHT_COLOR: Record<RiskLabel, string> = {
+  G: "rgba(34,197,94,0.25)",
+  M: "rgba(245,158,11,0.25)",
+  B: "rgba(248,113,113,0.25)",
+};
 
 export default function RiskPage() {
   const { setPos } = useProgress();
@@ -29,12 +42,17 @@ export default function RiskPage() {
 
   const activeDoc = useMemo(
     () => docs.find((d) => d.id === activeId) ?? null,
-    [docs, activeId]
+    [docs, activeId],
   );
-  const activeSrc = activeId == null ? null : srcMap[activeId] ?? null;
+  const activeSrc = useMemo(
+    () => (activeId == null ? null : srcMap[activeId] ?? null),
+    [activeId, srcMap],
+  );
 
   const [numPages, setNumPages] = useState(1);
   const [pageNumber, setPageNumber] = useState(1);
+
+  const [riskySentences, setRiskySentences] = useState<RiskySentence[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -53,14 +71,29 @@ export default function RiskPage() {
       const list = uploaded.map(toDoc);
       setDocs(list);
 
-      // presigned URL 요청
       const map: Record<number, string> = {};
       for (const r of uploaded) {
         try {
-          // 항상 presigned GET URL 사용 (403 방지)
-          map[r.id] = await resolveViewUrl(r);
+          const raw = (await resolveViewUrl(r)) as unknown;
+
+          let url: string;
+          if (typeof raw === "string") {
+            url = raw;
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            "url" in (raw as Record<string, unknown>) &&
+            typeof (raw as { url: unknown }).url === "string"
+          ) {
+            url = (raw as { url: string }).url;
+          } else {
+            console.error("invalid download-url response:", raw);
+            continue;
+          }
+
+          map[r.id] = url;
         } catch (e) {
-          console.error("❌ Failed to resolve URL:", r.id, e);
+          console.error("Failed to resolve URL:", r.id, e);
         }
       }
       setSrcMap(map);
@@ -72,19 +105,58 @@ export default function RiskPage() {
     })();
   }, [uploaded]);
 
-  // ─────────────────────────────────────────────
-  // PDF 로드 에러 시 presigned URL 갱신 (만료 복구)
-  // ─────────────────────────────────────────────
   const handlePdfLoadError = async (err: unknown) => {
-  console.warn(" PDF Load Error:", err);
-  if (!activeId) return;
-  try {
-    const fresh = await getDownloadUrl(activeId);
-    setSrcMap((m) => ({ ...m, [activeId]: fresh }));
-  } catch (e) {
-    console.error(" Failed to refresh presigned URL", e);
-  }
-};
+    console.warn(" PDF Load Error:", err);
+    if (!activeId) return;
+    try {
+      const fresh = await getDownloadUrl(activeId);
+      setSrcMap((m) => ({ ...m, [activeId]: fresh }));
+    } catch (e) {
+      console.error(" Failed to refresh presigned URL", e);
+    }
+  };
+
+  //활성화된 pdf 따라 gpt api
+  useEffect(() => {
+    if (!activeSrc || activeDoc?.type !== "pdf") {
+      setRiskySentences([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const item = await extractRisksForUrl(activeSrc);
+        if (!cancelled) {
+          setRiskySentences(item?.risky_sentences ?? []);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error("extractRisksForUrl error", e);
+          setRiskySentences([]);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSrc, activeDoc?.type]);
+
+  // PdfViewer에 넘겨 줄 하이라이트 정보
+  const pdfHighlights = useMemo(
+    () =>
+      riskySentences.map((r, idx) => ({
+        sentence: r.sentence,
+        reason: r.reason,
+        color: RISK_HIGHLIGHT_COLOR[r.risk_label],
+        index: idx,
+      })),
+    [riskySentences],
+  );
 
   const left = (
     <DocList
@@ -108,7 +180,9 @@ export default function RiskPage() {
           onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
           disabled={pageNumber <= 1}
           className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-            pageNumber > 1 ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"
+            pageNumber > 1
+              ? "hover:bg-gray-100"
+              : "opacity-40 cursor-not-allowed"
           }`}
         >
           ‹
@@ -120,7 +194,9 @@ export default function RiskPage() {
           onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
           disabled={pageNumber >= numPages}
           className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-            pageNumber < numPages ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"
+            pageNumber < numPages
+              ? "hover:bg-gray-100"
+              : "opacity-40 cursor-not-allowed"
           }`}
         >
           ›
@@ -136,14 +212,19 @@ export default function RiskPage() {
             {activeDoc && activeSrc ? (
               activeDoc.type === "pdf" ? (
                 <PdfViewer
-                src={activeSrc}
-                page={pageNumber}
-                width={PAGE_WIDTH}
-                onLoad={(n) => setNumPages(n)}
-                onError={handlePdfLoadError}
-              />
+                  src={activeSrc}
+                  page={pageNumber}
+                  width={PAGE_WIDTH}
+                  onLoad={(n) => setNumPages(n)}
+                  onError={handlePdfLoadError}
+                  highlights={pdfHighlights}
+                />
               ) : activeDoc.type === "image" ? (
-                <ImageViewer src={activeSrc} width={PAGE_WIDTH} alt={activeDoc.name} />
+                <ImageViewer
+                  src={activeSrc}
+                  width={PAGE_WIDTH}
+                  alt={activeDoc.name}
+                />
               ) : (
                 <div className="text-sm text-gray-500">
                   미리보기를 지원하지 않는 형식입니다.
