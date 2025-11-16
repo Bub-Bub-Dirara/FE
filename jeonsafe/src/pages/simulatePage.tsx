@@ -1,13 +1,43 @@
 import { useEffect, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 import LawAccordion from "../components/LawAccordion";
-import {
-  convertOnly,
-  type RawLawItem,
-  type LawWithArticles,
-} from "../utils/transformLawData";
 import { useUploadStore } from "../stores/useUploadStore";
 import { http } from "../lib/http";
+
+type LawApiItem = {
+  rank: number;
+  score: number;
+  law_name: string;
+  article_no: string;
+  snippet: string;
+};
+
+type LawsSearchResponse = {
+  query: string;
+  count: number;
+  items: LawApiItem[];
+};
+
+type LawHit = {
+  rank: number;
+  lawName: string;
+  articleNo: string;
+  snippet: string;
+};
+
+type RawCaseApiItem = {
+  doc_id: number;
+  사건명: string;
+  법원명: string;
+  선고일자: string;
+  본문요약?: string;
+};
+
+type CasesSearchResponse = {
+  query: string;
+  count: number;
+  items: RawCaseApiItem[];
+};
 
 type CaseItem = {
   id: string;
@@ -17,36 +47,13 @@ type CaseItem = {
   summary?: string;
 };
 
-// 응답 객체에서 "배열" 하나를 뽑아오는 유틸 함수
-function extractArrayFromPayload(payload: unknown): any[] {
-  if (Array.isArray(payload)) return payload;
-
-  if (!payload || typeof payload !== "object") return [];
-
-  const obj = payload as Record<string, unknown>;
-
-  // 자주 나올 법한 키 우선 탐색
-  const candidateKeys = ["raw", "results", "items", "laws", "cases", "data"];
-  for (const key of candidateKeys) {
-    const v = obj[key];
-    if (Array.isArray(v)) return v;
-  }
-
-  // 그래도 못 찾으면 값들 중 첫 번째 배열 사용
-  for (const v of Object.values(obj)) {
-    if (Array.isArray(v)) return v;
-  }
-
-  return [];
-}
-
 export default function SimulatePage() {
   const { setPos } = useProgress();
 
   const uploaded = useUploadStore((s) => s.uploaded);
   const analysisById = useUploadStore((s) => s.analysisById);
 
-  const [laws, setLaws] = useState<LawWithArticles[] | null>(null);
+  const [laws, setLaws] = useState<LawHit[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
@@ -55,19 +62,20 @@ export default function SimulatePage() {
     setPos("post", 2);
   }, [setPos]);
 
-  // 업로드된 각 파일의 분석 결과에서 법령 검색용 쿼리 추출
+  // === 검색용 쿼리 추출 ===
+  // 법령 관점 분석 텍스트 전체를 하나의 q 로 합치기
   const lawQuery = uploaded
     .map((file) => analysisById[String(file.id)]?.law_input?.trim())
     .filter((v): v is string => !!v && v.length > 0)
     .join("\n");
 
-  // 업로드된 각 파일의 분석 결과에서 판례 검색용 쿼리 추출
+  // 판례 관점 분석 텍스트 전체를 하나의 q 로 합치기
   const caseQuery = uploaded
     .map((file) => analysisById[String(file.id)]?.case_input?.trim())
     .filter((v): v is string => !!v && v.length > 0)
     .join("\n");
 
-  // 관련 법령 검색 (/ai/laws/search)
+  // === 관련 법령 검색 (/ai/laws/search) ===
   useEffect(() => {
     if (!lawQuery) {
       setLaws([]);
@@ -76,7 +84,7 @@ export default function SimulatePage() {
 
     (async () => {
       try {
-        const { data } = await http.get<unknown>("/ai/laws/search", {
+        const { data } = await http.get<LawsSearchResponse>("/ai/laws/search", {
           params: {
             q: lawQuery,
             k: 5,
@@ -84,13 +92,14 @@ export default function SimulatePage() {
           },
         });
 
-        const payload =
-          typeof data === "string" ? JSON.parse(data as string) : data;
+        const hits: LawHit[] = data.items.map((item) => ({
+          rank: item.rank,
+          lawName: item.law_name,
+          articleNo: item.article_no,
+          snippet: item.snippet,
+        }));
 
-        const rawItems = extractArrayFromPayload(payload) as RawLawItem[];
-
-        const converted = convertOnly(rawItems);
-        setLaws(converted);
+        setLaws(hits);
         setErr(null);
       } catch (e: unknown) {
         console.error("Error calling /ai/laws/search:", e);
@@ -101,7 +110,7 @@ export default function SimulatePage() {
     })();
   }, [lawQuery]);
 
-  // 관련 판례 검색 (/ai/cases/search)
+  // === 관련 판례 검색 (/ai/cases/search) ===
   useEffect(() => {
     if (!caseQuery) {
       setCases([]);
@@ -110,19 +119,25 @@ export default function SimulatePage() {
 
     (async () => {
       try {
-        const { data } = await http.get<unknown>("/ai/cases/search", {
-          params: {
-            q: caseQuery,
-            k: 5,
-            with_summary: true,
-            with_body: false,
+        const { data } = await http.get<CasesSearchResponse>(
+          "/ai/cases/search",
+          {
+            params: {
+              q: caseQuery,
+              k: 5,
+              with_summary: true,
+              with_body: false,
+            },
           },
-        });
+        );
 
-        const payload =
-          typeof data === "string" ? JSON.parse(data as string) : data;
-
-        const caseItems = extractArrayFromPayload(payload) as CaseItem[];
+        const caseItems: CaseItem[] = data.items.map((item) => ({
+          id: String(item.doc_id),
+          name: item["사건명"],
+          court: item["법원명"],
+          date: item["선고일자"],
+          summary: item["본문요약"],
+        }));
 
         setCases(caseItems);
         setCaseErr(null);
@@ -135,6 +150,7 @@ export default function SimulatePage() {
     })();
   }, [caseQuery]);
 
+  // === 로딩/에러 처리 ===
   if (err) {
     return (
       <div className="px-4 py-8 text-sm text-red-600">
@@ -151,6 +167,7 @@ export default function SimulatePage() {
     );
   }
 
+  // === 화면 렌더링 ===
   return (
     <div className="px-4 py-6 space-y-8">
       {/* AI 분석 요약 */}
