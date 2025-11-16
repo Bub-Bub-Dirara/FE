@@ -1,4 +1,3 @@
-// src/pages/MappingPage.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 import TwoPaneViewer from "../components/TwoPaneViewer";
