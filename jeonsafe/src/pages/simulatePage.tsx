@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 import LawAccordion from "../components/LawAccordion";
+import type { LawWithArticles } from "../types/law";
 import { useUploadStore } from "../stores/useUploadStore";
 import { http } from "../lib/http";
 
@@ -16,13 +17,6 @@ type LawsSearchResponse = {
   query: string;
   count: number;
   items: LawApiItem[];
-};
-
-type LawHit = {
-  rank: number;
-  lawName: string;
-  articleNo: string;
-  snippet: string;
 };
 
 type RawCaseApiItem = {
@@ -47,13 +41,49 @@ type CaseItem = {
   summary?: string;
 };
 
+// /ai/laws/search 응답을 LawWithArticles[] 로 변환
+function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
+  const grouped: Record<string, LawWithArticles> = {};
+
+  data.items.forEach((item, idx) => {
+    const lawName = item.law_name;
+
+    if (!grouped[lawName]) {
+      grouped[lawName] = {
+        // 실제 타입 구조와 맞추기 위해 any 캐스팅
+        lawId: lawName,
+        lawName,
+        articles: [],
+      } as unknown as LawWithArticles;
+    }
+
+    const law = grouped[lawName];
+
+    const cleanNumber = item.article_no
+      .replace(/^제/, "")
+      .replace(/조$/, "")
+      .trim();
+
+    const article = {
+      key: `${lawName}-${item.article_no}-${idx}`,
+      number: cleanNumber || item.article_no,
+      title: item.article_no, // "제11조" 같은 형태
+      text: item.snippet,
+    } as any;
+
+    (law.articles as any[]).push(article);
+  });
+
+  return Object.values(grouped);
+}
+
 export default function SimulatePage() {
   const { setPos } = useProgress();
 
   const uploaded = useUploadStore((s) => s.uploaded);
   const analysisById = useUploadStore((s) => s.analysisById);
 
-  const [laws, setLaws] = useState<LawHit[] | null>(null);
+  const [laws, setLaws] = useState<LawWithArticles[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
@@ -63,13 +93,11 @@ export default function SimulatePage() {
   }, [setPos]);
 
   // === 검색용 쿼리 추출 ===
-  // 법령 관점 분석 텍스트 전체를 하나의 q 로 합치기
   const lawQuery = uploaded
     .map((file) => analysisById[String(file.id)]?.law_input?.trim())
     .filter((v): v is string => !!v && v.length > 0)
     .join("\n");
 
-  // 판례 관점 분석 텍스트 전체를 하나의 q 로 합치기
   const caseQuery = uploaded
     .map((file) => analysisById[String(file.id)]?.case_input?.trim())
     .filter((v): v is string => !!v && v.length > 0)
@@ -92,17 +120,11 @@ export default function SimulatePage() {
           },
         });
 
-        const hits: LawHit[] = data.items.map((item) => ({
-          rank: item.rank,
-          lawName: item.law_name,
-          articleNo: item.article_no,
-          snippet: item.snippet,
-        }));
-
-        setLaws(hits);
+        const converted = toLawWithArticles(data);
+        setLaws(converted);
         setErr(null);
       } catch (e: unknown) {
-        console.error("Error calling /ai/laws/search:", e);
+        console.error("/ai/laws/search error:", e);
         if (e instanceof Error) setErr(e.message);
         else setErr(String(e));
         setLaws([]);
@@ -142,7 +164,7 @@ export default function SimulatePage() {
         setCases(caseItems);
         setCaseErr(null);
       } catch (e: unknown) {
-        console.error("Error calling /ai/cases/search:", e);
+        console.error("/ai/cases/search error:", e);
         if (e instanceof Error) setCaseErr(e.message);
         else setCaseErr(String(e));
         setCases([]);
