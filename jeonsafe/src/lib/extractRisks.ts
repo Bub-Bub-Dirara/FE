@@ -27,11 +27,6 @@ export type RiskySentence = {
 
 export type ExtractRisksItem = {
   fileurl: string;
-
-  // 👇 파일(아이템) 단위 요약 입력들 – optional로 추가
-  law_input?: string;
-  case_input?: string;
-
   risky_sentences: RiskySentence[];
 };
 

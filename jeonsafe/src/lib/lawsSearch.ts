@@ -21,9 +21,15 @@ type CasesSearchResponse = {
   items?: any[];
 };
 
-export async function searchLaws(query: string): Promise<LawSearchItem[]> {
-  const { data } = await http.post<LawsSearchResponse>("/ai/laws/search", {
-    query,
+// 🔹 법령 검색: GET /ai/laws/search?q=...
+export async function searchLaws(q: string): Promise<LawSearchItem[]> {
+  const { data } = await http.get<LawsSearchResponse>("/ai/laws/search", {
+    params: {
+      q,        // ✅ Swagger에 나온 q 파라미터
+      // 필요하면 k, min_score 도 여기서 같이 넘겨줄 수 있음
+      // k: 5,
+      // min_score: 0.05,
+    },
   });
 
   return (data.items ?? []).map((raw: any, idx: number): LawSearchItem => ({
@@ -43,9 +49,15 @@ export async function searchLaws(query: string): Promise<LawSearchItem[]> {
   }));
 }
 
-export async function searchCases(query: string): Promise<CaseSearchItem[]> {
-  const { data } = await http.post<CasesSearchResponse>("/ai/cases/search", {
-    query,
+// 🔹 판례 검색: GET /ai/cases/search?q=...
+export async function searchCases(q: string): Promise<CaseSearchItem[]> {
+  const { data } = await http.get<CasesSearchResponse>("/ai/cases/search", {
+    params: {
+      q,           // ✅ Swagger에 나온 q 파라미터
+      // k: 5,
+      // with_summary: true,
+      // with_body: false,
+    },
   });
 
   return (data.items ?? []).map((raw: any, idx: number): CaseSearchItem => ({
