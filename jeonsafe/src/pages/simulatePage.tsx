@@ -25,7 +25,7 @@ function extractArrayFromPayload(payload: unknown): any[] {
 
   const obj = payload as Record<string, unknown>;
 
-  // 자주 쓸 법한 키 우선 탐색
+  // 자주 나올 법한 키 우선 탐색
   const candidateKeys = ["raw", "results", "items", "laws", "cases", "data"];
   for (const key of candidateKeys) {
     const v = obj[key];
@@ -155,7 +155,9 @@ export default function SimulatePage() {
     <div className="px-4 py-6 space-y-8">
       {/* AI 분석 요약 */}
       <section>
-        <h2 className="mb-4 text-xl font-bold">AI 분석 요약</h2>
+        <h1 className="text-xl font-bold mb-3 text-[#113F67]">
+          AI 분석 요약
+        </h1>
 
         {uploaded.length === 0 ? (
           <p className="text-sm text-gray-500">
@@ -189,38 +191,35 @@ export default function SimulatePage() {
                   </div>
 
                   {lawInput && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold text-gray-700">
-                        법령 쿼리
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-xs text-gray-700">
-                        {lawInput}
-                      </p>
+                    <div className="mt-2 text-xs text-gray-700">
+                      <span className="font-semibold text-[#113F67]">
+                        법령 관점 분석:&nbsp;
+                      </span>
+                      {lawInput}
                     </div>
                   )}
 
                   {caseInput && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold text-gray-700">
-                        판례 쿼리
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-xs text-gray-700">
-                        {caseInput}
-                      </p>
+                    <div className="mt-1 text-xs text-gray-700">
+                      <span className="font-semibold text-[#113F67]">
+                        판례 관점 분석:&nbsp;
+                      </span>
+                      {caseInput}
                     </div>
                   )}
 
                   {reasons.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold text-gray-700">
-                        위험도 판단 이유
-                      </p>
-                      <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-gray-700">
-                        {reasons.map((r, idx) => (
-                          <li key={idx}>{r}</li>
-                        ))}
-                      </ul>
-                    </div>
+                    <ul className="mt-2 list-disc pl-5 text-[11px] text-gray-600">
+                      {reasons.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {!analysis && (
+                    <p className="mt-2 text-[11px] text-gray-400">
+                      이 파일에 대한 AI 분석 결과가 아직 없습니다.
+                    </p>
                   )}
                 </div>
               );
