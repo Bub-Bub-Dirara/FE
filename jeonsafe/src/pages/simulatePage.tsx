@@ -17,6 +17,29 @@ type CaseItem = {
   summary?: string;
 };
 
+// 응답 객체에서 "배열" 하나를 뽑아오는 유틸 함수
+function extractArrayFromPayload(payload: unknown): any[] {
+  if (Array.isArray(payload)) return payload;
+
+  if (!payload || typeof payload !== "object") return [];
+
+  const obj = payload as Record<string, unknown>;
+
+  // 자주 쓸 법한 키 우선 탐색
+  const candidateKeys = ["raw", "results", "items", "laws", "cases", "data"];
+  for (const key of candidateKeys) {
+    const v = obj[key];
+    if (Array.isArray(v)) return v;
+  }
+
+  // 그래도 못 찾으면 값들 중 첫 번째 배열 사용
+  for (const v of Object.values(obj)) {
+    if (Array.isArray(v)) return v;
+  }
+
+  return [];
+}
+
 export default function SimulatePage() {
   const { setPos } = useProgress();
 
@@ -53,18 +76,27 @@ export default function SimulatePage() {
 
     (async () => {
       try {
-        const { data } = await http.get<RawLawItem[]>("/ai/laws/search", {
+        const { data } = await http.get<unknown>("/ai/laws/search", {
           params: {
             q: lawQuery,
             k: 5,
             min_score: 0.05,
           },
         });
-        const converted = convertOnly(data);
+
+        const payload =
+          typeof data === "string" ? JSON.parse(data as string) : data;
+
+        const rawItems = extractArrayFromPayload(payload) as RawLawItem[];
+
+        const converted = convertOnly(rawItems);
         setLaws(converted);
+        setErr(null);
       } catch (e: unknown) {
+        console.error("Error calling /ai/laws/search:", e);
         if (e instanceof Error) setErr(e.message);
         else setErr(String(e));
+        setLaws([]);
       }
     })();
   }, [lawQuery]);
@@ -78,7 +110,7 @@ export default function SimulatePage() {
 
     (async () => {
       try {
-        const { data } = await http.get<CaseItem[]>("/ai/cases/search", {
+        const { data } = await http.get<unknown>("/ai/cases/search", {
           params: {
             q: caseQuery,
             k: 5,
@@ -86,10 +118,19 @@ export default function SimulatePage() {
             with_body: false,
           },
         });
-        setCases(data);
+
+        const payload =
+          typeof data === "string" ? JSON.parse(data as string) : data;
+
+        const caseItems = extractArrayFromPayload(payload) as CaseItem[];
+
+        setCases(caseItems);
+        setCaseErr(null);
       } catch (e: unknown) {
+        console.error("Error calling /ai/cases/search:", e);
         if (e instanceof Error) setCaseErr(e.message);
         else setCaseErr(String(e));
+        setCases([]);
       }
     })();
   }, [caseQuery]);
