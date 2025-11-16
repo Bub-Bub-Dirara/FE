@@ -1,8 +1,10 @@
+// src/lib/extractRisks.ts
 import axios from "axios";
 import { http } from "./http";
 
 export type RiskLabel = "G" | "M" | "B";
 
+// 백엔드에서 오는 positions 구조 그대로
 export type RiskPosition = {
   page: number;
   x: number;
@@ -15,17 +17,24 @@ export type RiskPosition = {
 
 export type RiskySentence = {
   sentence: string;
+  anchor?: string;          // 백엔드에서 오는 anchor (있으면 사용)
   reason: string;
   risk_label: RiskLabel;
   law_input?: string;
   case_input?: string;
-  positions?: RiskPosition[];
+  positions?: RiskPosition[]; // 👈 좌표 정보 (없을 수도 있어서 optional)
 };
 
 export type ExtractRisksItem = {
   fileurl: string;
+
+  // 👇 파일(아이템) 단위 요약 입력들 – optional로 추가
+  law_input?: string;
+  case_input?: string;
+
   risky_sentences: RiskySentence[];
 };
+
 
 type ExtractRisksResponse = {
   items: ExtractRisksItem[];

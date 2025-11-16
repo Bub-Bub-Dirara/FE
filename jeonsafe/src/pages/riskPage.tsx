@@ -11,6 +11,7 @@ import { useUploadStore } from "../stores/useUploadStore";
 import { getDownloadUrl, resolveViewUrl } from "../lib/files";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { useRiskStore } from "../stores/useRiskStore";
 
 import {
   extractRisksForUrl,
@@ -31,6 +32,7 @@ const RISK_HIGHLIGHT_COLOR: Record<RiskLabel, string> = {
 
 export default function RiskPage() {
   const { setPos } = useProgress();
+  const setRiskItem = useRiskStore((s) => s.setItem);
   useEffect(() => setPos("pre", 1), [setPos]);
 
   // UploadPage에서 넘어온 업로드 파일들
@@ -130,6 +132,9 @@ export default function RiskPage() {
         const item = await extractRisksForUrl(activeSrc);
         if (!cancelled) {
           setRiskySentences(item?.risky_sentences ?? []);
+          if (item && activeId != null) {
+            setRiskItem(activeId, item);
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -144,7 +149,7 @@ export default function RiskPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeSrc, activeDoc?.type]);
+  }, [activeSrc, activeDoc?.type, activeId, setRiskItem]);
 
   // PdfViewer에 넘겨 줄 좌표 기반 하이라이트 정보
   const pdfHighlights = useMemo(
