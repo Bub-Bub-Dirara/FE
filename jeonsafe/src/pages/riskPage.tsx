@@ -116,7 +116,7 @@ export default function RiskPage() {
     }
   };
 
-  //활성화된 pdf 따라 gpt api
+  // 활성화된 pdf 따라 GPT API 호출
   useEffect(() => {
     if (!activeSrc || activeDoc?.type !== "pdf") {
       setRiskySentences([]);
@@ -146,15 +146,24 @@ export default function RiskPage() {
     };
   }, [activeSrc, activeDoc?.type]);
 
-  // PdfViewer에 넘겨 줄 하이라이트 정보
+  // PdfViewer에 넘겨 줄 좌표 기반 하이라이트 정보
   const pdfHighlights = useMemo(
     () =>
-      riskySentences.map((r, idx) => ({
-        sentence: r.sentence,
-        reason: r.reason,
-        color: RISK_HIGHLIGHT_COLOR[r.risk_label],
-        index: idx,
-      })),
+      riskySentences.flatMap((r, idx) =>
+        (r.positions ?? []).map((p) => ({
+          page: p.page,
+          x: p.x,
+          y: p.y,
+          w: p.w,
+          h: p.h,
+          pageWidth: p.page_width,
+          pageHeight: p.page_height,
+          color: RISK_HIGHLIGHT_COLOR[r.risk_label],
+          reason: r.reason,
+          index: idx,
+          sentence: r.sentence,
+        })),
+      ),
     [riskySentences],
   );
 
@@ -208,7 +217,11 @@ export default function RiskPage() {
     <div className="min-h-screen bg-neutral-50 flex flex-col">
       <main className="flex-1">
         <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
-          <TwoPaneViewer left={left} rightHeader={rightHeader} rightFooter={rightFooter}>
+          <TwoPaneViewer
+            left={left}
+            rightHeader={rightHeader}
+            rightFooter={rightFooter}
+          >
             {activeDoc && activeSrc ? (
               activeDoc.type === "pdf" ? (
                 <PdfViewer

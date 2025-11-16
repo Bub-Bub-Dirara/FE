@@ -3,12 +3,23 @@ import { http } from "./http";
 
 export type RiskLabel = "G" | "M" | "B";
 
+export type RiskPosition = {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  page_width: number;
+  page_height: number;
+};
+
 export type RiskySentence = {
   sentence: string;
   reason: string;
   risk_label: RiskLabel;
   law_input?: string;
   case_input?: string;
+  positions?: RiskPosition[];
 };
 
 export type ExtractRisksItem = {
@@ -29,7 +40,7 @@ export async function extractRisksForUrl(
     const { data } = await http.post<ExtractRisksResponse>(
       "/ai/gpt/extract_risks",
       {
-        urls: [url], //post 부분
+        urls: [url],
       },
     );
 
