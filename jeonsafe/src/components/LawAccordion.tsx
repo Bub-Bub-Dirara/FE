@@ -39,7 +39,7 @@ function LawBlock({ law }: { law: LawWithArticles }) {
         <div className="p-3 space-y-3">
           {law.articles.map((a, idx) => (
             <ArticleItem
-              key={a.key ?? `${law.lawId}-${a.number ?? idx}`}
+              key={a.key ?? `${law.lawId ?? law.lawName}-${a.number ?? idx}`}
               article={a}
             />
           ))}
@@ -54,13 +54,12 @@ type Article = LawWithArticles["articles"][number];
 function ArticleItem({ article }: { article: Article }) {
   const [fullOpen, setFullOpen] = useState(false);
 
-  // 백엔드에서 number가 없거나 "undefined"로 올 수도 있으니 방어적으로 처리
+  // number 가 없거나 "undefined"로 들어오는 경우 방어
   const rawNumber =
     article.number && article.number !== "undefined"
       ? String(article.number)
       : "";
 
-  // "제11조", "11", "11조" 어떤 형식이 와도 깔끔하게 정리
   const cleanedNumber = rawNumber
     .replace(/^제/, "")
     .replace(/조$/, "")
@@ -68,30 +67,36 @@ function ArticleItem({ article }: { article: Article }) {
 
   const numberLabel = cleanedNumber ? `제${cleanedNumber}조` : "";
 
-  // 제목 우선순위: title > (제n조) > "관련 조항"
+  // 제목: title > 제n조 > "관련 조항"
   const displayTitle =
     article.title && article.title.trim().length > 0
       ? article.title
       : numberLabel || "관련 조항";
 
-  const fullText = article.text?.trim();
-  const hasText = !!fullText;
+  const fullText = (article.text ?? "").trim();
+  const hasText = fullText.length > 0;
+
+  // 프리뷰 길이
+  const MAX_PREVIEW = 120;
+  const isLong = hasText && fullText.length > MAX_PREVIEW;
 
   const preview = hasText
-    ? fullText!.slice(0, 200)
+    ? isLong
+      ? fullText.slice(0, MAX_PREVIEW)
+      : fullText
     : "전문 보기로 확인하세요.";
 
   return (
     <div className="rounded-xl bg-blue-50/60 border border-blue-100 p-4">
       <div className="font-semibold text-blue-900">{displayTitle}</div>
+
       <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">
-        {fullOpen
-          ? fullText || "(내용 없음)"
-          : preview + (hasText && fullText!.length > 200 ? "…" : "")}
+        {fullOpen ? (hasText ? fullText : "(내용 없음)") : preview + (isLong ? "…" : "")}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {hasText && (
+        {/* 실제로 더 보여줄 내용이 있을 때만 버튼 표시 */}
+        {isLong && (
           <button
             type="button"
             onClick={() => setFullOpen((v) => !v)}
