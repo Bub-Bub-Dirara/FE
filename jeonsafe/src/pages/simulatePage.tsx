@@ -15,6 +15,8 @@ import PdfViewer from "../components/viewers/PdfViewer";
 import { resolveViewUrl, getDownloadUrl } from "../lib/files";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import ReportButton from "../components/ReportButton";
+import PageNavigator from "../components/viewers/PdfPageNavigator";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -117,6 +119,11 @@ export default function SimulatePage() {
 
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
+
+  const onGenerateReport = async () => {
+    await new Promise((r) => setTimeout(r, 600));
+    alert("리포트가 생성되었습니다. (데모)");
+  };
 
   // 좌측 DocList 데이터 (업로드된 파일 목록) + 타입 구분
   const docs: Doc[] = useMemo(
@@ -313,121 +320,26 @@ export default function SimulatePage() {
         <div className="w-full p-4 pb-24 overflow-hidden">
           <TwoPaneViewer left={left} rightHeader={rightHeader}>
             <div className="space-y-6">
-              {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
-              <section className="w-full max-w-3xl mx-auto">
-                <h3 className="text-base font-semibold mb-2">업로드 문서</h3>
-                <div className="rounded-xl border border-2 border-[#113F67] bg-white p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-medium text-gray-800">
-                      {activeDoc ? activeDoc.name : "문서를 선택해 주세요"}
-                    </div>
 
-                    {activeDoc?.type === "pdf" && (
-                      <div className="flex items-center gap-2 text-xs text-gray-700">
-                        <button
-                          onClick={() =>
-                            setPageNumber((p) => Math.max(1, p - 1))
-                          }
-                          disabled={pageNumber <= 1}
-                          className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-                            pageNumber > 1
-                              ? "hover:bg-gray-100"
-                              : "opacity-40 cursor-not-allowed"
-                          }`}
-                        >
-                          ‹
-                        </button>
-                        <span className="tabular-nums">
-                          {pageNumber} / {numPages}p
-                        </span>
-                        <button
-                          onClick={() =>
-                            setPageNumber((p) =>
-                              Math.min(numPages, p + 1),
-                            )
-                          }
-                          disabled={pageNumber >= numPages}
-                          className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-                            pageNumber < numPages
-                              ? "hover:bg-gray-100"
-                              : "opacity-40 cursor-not-allowed"
-                          }`}
-                        >
-                          ›
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="w-full rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                    {activeDoc && activeSrc ? (
-                      activeDoc.type === "pdf" ? (
-                        <PdfViewer
-                          src={activeSrc}
-                          page={pageNumber}
-                          width={PAGE_WIDTH}
-                          onLoad={(n) => setNumPages(n)}
-                          onError={handlePdfLoadError}
-                        />
-                      ) : activeDoc.type === "image" ? (
-                        <img
-                          src={activeSrc}
-                          alt={activeDoc.name}
-                          className="w-full h-40 sm:h-44 md:h-48 object-contain bg-gray-100"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="py-10 text-sm text-gray-500">
-                          미리보기를 지원하지 않는 형식입니다.
-                        </div>
-                      )
-                    ) : (
-                      <img
-                        src={PLACEHOLDER}
-                        alt={activeDoc?.name ?? "미리보기"}
-                        className="w-full h-40 sm:h-44 md:h-48 object-cover"
-                        loading="lazy"
-                      />
-                    )}
-                  </div>
-
-                  {activeDoc && (
-                    <div className="mt-3 text-xs text-gray-700">
-                      <span className="font-semibold text-[#113F67]">
-                        선택된 문서:&nbsp;
-                      </span>
-                      {activeDoc.name}
-                    </div>
-                  )}
-                  {docs.length === 0 && (
-                    <p className="mt-2 text-xs text-gray-500">
-                      이전 단계에서 업로드된 문서가 없습니다. 파일을 업로드하면 이 영역에 문서가 표시돼요.
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              {/* AI 분석 요약 */}
+            {/* AI 분석 요약 */}
               <section className="w-full max-w-3xl mx-auto space-y-4">
-                <h1 className="text-xl font-bold mb-1 text-[#113F67]">
+                <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
                   AI 분석 요약
-                </h1>
+                </h2>
 
-                {uploaded.length === 0 ? (
+                {!activeDoc ? (
                   <p className="text-sm text-gray-500">
-                    이전 단계에서 업로드한 파일이 없습니다. 업로드 후 다시 시도해 주세요.
+                    선택된 문서가 없습니다. 좌측에서 문서를 선택해 주세요.
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {uploaded.map((file) => {
-                      const id = String(file.id);
+                    {(() => {
+                      const id = String(activeDoc.id);
                       const analysis = analysisById[id];
 
                       const lawInput = analysis?.law_input;
                       const caseInput = analysis?.case_input;
-                      const rating = analysis?.rating?.label as
-                        | string
-                        | undefined;
+                      const rating = analysis?.rating?.label as string | undefined;
                       const reasons = (analysis?.rating?.reasons ?? []) as string[];
 
                       return (
@@ -437,7 +349,7 @@ export default function SimulatePage() {
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="text-sm font-semibold text-gray-800">
-                              {file.original_filename}
+                              {activeDoc.name}
                             </div>
                             {rating && (
                               <span className="inline-flex items-center rounded-full border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700">
@@ -479,9 +391,65 @@ export default function SimulatePage() {
                           )}
                         </div>
                       );
-                    })}
+                    })()}
                   </div>
                 )}
+              </section>
+
+              {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
+              <section className="w-full">
+                <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
+                  업로드 문서
+                </h2>
+                <div className="rounded-xl border border-2 border-[#113F67] bg-white p-3">
+                  <div className="w-full flex items-center justify-center mb-3">
+                    <div
+                      className="bg-gray-100 rounded-lg border border-gray-200 shadow-sm overflow-y-auto overflow-x-auto"
+                      style={{ maxWidth: 720, height: 300 }} // 크기 조절 포인트
+                    >
+                      <div className="p-3 flex items-center justify-center">
+                        {activeDoc && activeSrc ? (
+                          activeDoc.type === "pdf" ? (
+                            <PdfViewer
+                              src={activeSrc}
+                              page={pageNumber}
+                              width={PAGE_WIDTH} // 이미 위에서 const PAGE_WIDTH 있음
+                              onLoad={(n) => setNumPages(n)}
+                              onError={handlePdfLoadError}
+                            />
+                          ) : activeDoc.type === "image" ? (
+                            <img
+                              src={activeSrc}
+                              alt={activeDoc.name}
+                              className="max-w-full max-h-[260px] object-contain bg-gray-100"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="py-10 text-sm text-gray-500">
+                              미리보기를 지원하지 않는 형식입니다.
+                            </div>
+                          )
+                        ) : (
+                          <img
+                            src={PLACEHOLDER}
+                            alt={activeDoc?.name ?? "미리보기"}
+                            className="max-w-full max-h-[260px] object-contain"
+                            loading="lazy"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                    {activeDoc?.type === "pdf" && (
+                      <PageNavigator
+                        page={pageNumber}
+                        totalPages={numPages}
+                        suffix="p"
+                        onChange={(next) => setPageNumber(next)}
+                      />
+                    )}
+                    </div>
               </section>
 
               {/* 관련 판례 – 예쁜 아코디언 카드 UI */}
@@ -543,6 +511,7 @@ export default function SimulatePage() {
           </TwoPaneViewer>
         </div>
       </main>
+      <ReportButton onGenerate={onGenerateReport} />
     </div>
   );
 }

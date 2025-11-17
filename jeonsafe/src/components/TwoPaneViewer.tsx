@@ -37,12 +37,9 @@ export default function TwoPaneViewer({
           {rightHeader.action && <div className="shrink-0">{rightHeader.action}</div>}
         </div>
 
-        <div className="flex-1 flex items-center justify-center overflow-hidden">
-          <div
-            className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-y-auto overflow-x-hidden"
-            style={{ width: VIEW_W, height: VIEW_H }}
-          >
-            <div className="p-4">{children}</div>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="p-4">
+            {children}
           </div>
         </div>
 
