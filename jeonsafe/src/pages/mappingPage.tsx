@@ -369,7 +369,7 @@ export default function MappingPage() {
     [riskItems, activeDoc],
   );
 
-  // law_input / case_input 배열 뽑기 (risky_sentences 전체에서)
+  // law_input / case_input !배열! 뽑기 (risky_sentences 전체에서)
   const lawInputs = useMemo(
     () =>
       activeRisk?.risky_sentences
