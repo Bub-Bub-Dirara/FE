@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+// src/pages/SimulatePage.tsx
+import { useEffect, useState, useMemo } from "react";
 import { useProgress } from "../stores/useProgress";
 import type { LawWithArticles } from "../types/law";
 import { useUploadStore } from "../stores/useUploadStore";
@@ -8,6 +9,14 @@ import { http } from "../lib/http";
 import TwoPaneViewer from "../components/TwoPaneViewer";
 import DocList from "../components/DocList";
 import type { Doc } from "../types/doc";
+
+// 🔹 PDF 뷰어 & 파일 URL 유틸
+import PdfViewer from "../components/viewers/PdfViewer";
+import { resolveViewUrl, getDownloadUrl } from "../lib/files";
+import { pdfjs } from "react-pdf";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 type LawApiItem = {
   rank: number;
@@ -80,7 +89,7 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
   return Object.values(grouped);
 }
 
-// mappingPage에서 쓰던 플레이스홀더 이미지
+// mappingPage에서 쓰던 플레이스홀더 이미지 (PDF 못 불러올 때 fallback)
 const PLACEHOLDER =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -90,8 +99,12 @@ const PLACEHOLDER =
              font-family="sans-serif" font-size="16" fill="#9ca3af">
          미리보기 이미지가 없습니다
        </text>
-     </svg>`
+     </svg>`,
   );
+
+// Risk/Mapping과 같은 폭
+const VIEW_W = 700;
+const PAGE_WIDTH = VIEW_W - 16 * 2;
 
 export default function SimulatePage() {
   const { setPos } = useProgress();
@@ -105,17 +118,31 @@ export default function SimulatePage() {
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
 
-  // 좌측 DocList 데이터 (업로드된 파일 목록)
-  const docs: Doc[] =
-    uploaded.length > 0
-      ? uploaded.map((file, idx) => ({
-          id: file.id ?? idx + 1,
-          name: file.original_filename ?? `파일 ${idx + 1}`,
-          type: "other",
-        }))
-      : [];
+  // 좌측 DocList 데이터 (업로드된 파일 목록) + 타입 구분
+  const docs: Doc[] = useMemo(
+    () =>
+      uploaded.length > 0
+        ? uploaded.map((file, idx) => {
+            const isPdf = file.content_type === "application/pdf";
+            const isImg = file.content_type?.startsWith("image/");
+            return {
+              id: file.id ?? idx + 1,
+              name: file.original_filename ?? `파일 ${idx + 1}`,
+              type: isPdf ? "pdf" : isImg ? "image" : "other",
+            } as Doc;
+          })
+        : [],
+    [uploaded],
+  );
 
   const [activeDocId, setActiveDocId] = useState<number>(() => docs[0]?.id ?? 0);
+
+  // 🔹 파일 id -> presigned view URL
+  const [srcMap, setSrcMap] = useState<Record<number, string>>({});
+
+  // 🔹 PDF 페이지 상태
+  const [numPages, setNumPages] = useState(1);
+  const [pageNumber, setPageNumber] = useState(1);
 
   // 단계 위치
   useEffect(() => {
@@ -134,7 +161,96 @@ export default function SimulatePage() {
     }
   }, [docs, activeDocId]);
 
+  const activeDoc = docs.find((d) => d.id === activeDocId) ?? docs[0] ?? null;
+
+  // 🔹 presigned view URL 로딩
+  useEffect(() => {
+    setPos("post", 2);
+  }, [setPos]);
+
+  // 업로드 목록이 바뀌면 activeDocId 보정
+  useEffect(() => {
+    if (docs.length === 0) {
+      setActiveDocId(0);
+      return;
+    }
+    const exists = docs.some((d) => d.id === activeDocId);
+    if (!exists) {
+      setActiveDocId(docs[0].id);
+    }
+  }, [docs, activeDocId]);
+
   const activeDoc = docs.find((d) => d.id === activeDocId) ?? docs[0];
+
+  // === 검색용 쿼리 추출 ===
+  const lawQuery = uploaded
+    .map((file) => analysisById[String(file.id)]?.law_input?.trim())
+    .filter((v): v is string => !!v && v.length > 0)
+    .join("\n");
+
+  const caseQuery = uploaded
+    .map((file) => analysisById[String(file.id)]?.case_input?.trim())
+    .filter((v): v is string => !!v && v.length > 0)
+    .join("\n");
+
+  // === 관련 법령 검색 (/ai/laws/search) ===
+  useEffect(() => {
+    if (!lawQuery) {
+      setLaws([]);
+      setLawErr(null);
+      return;
+    }
+
+    (async () => {
+      if (!uploaded || uploaded.length === 0) return;
+
+      const map: Record<number, string> = {};
+      for (const file of uploaded) {
+        try {
+          const raw = (await resolveViewUrl(file)) as unknown;
+          let url: string;
+          if (typeof raw === "string") {
+            url = raw;
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            "url" in (raw as Record<string, unknown>) &&
+            typeof (raw as { url: unknown }).url === "string"
+          ) {
+            url = (raw as { url: string }).url;
+          } else {
+            console.error("invalid view-url response:", raw);
+            continue;
+          }
+          map[file.id] = url;
+        } catch (e) {
+          console.error("Failed to resolve view URL in SimulatePage:", file.id, e);
+        }
+      }
+      setSrcMap(map);
+    })();
+  }, [uploaded]);
+
+  // 🔹 현재 문서의 src
+  const activeSrc =
+    activeDoc && activeDoc.id != null ? srcMap[activeDoc.id] ?? null : null;
+
+  // 🔹 PDF 로드 에러 시 presigned URL 재발급
+  const handlePdfLoadError = async (err: unknown) => {
+    console.warn("PDF Load Error (SimulatePage):", err);
+    if (!activeDoc) return;
+    try {
+      const fresh = await getDownloadUrl(activeDoc.id);
+      setSrcMap((m) => ({ ...m, [activeDoc.id]: fresh }));
+    } catch (e) {
+      console.error("Failed to refresh presigned URL in SimulatePage", e);
+    }
+  };
+
+  // 문서가 바뀌면 페이지 1로
+  useEffect(() => {
+    setPageNumber(1);
+  }, [activeDocId]);
 
   // === 검색용 쿼리 추출 ===
   const lawQuery = uploaded
@@ -215,7 +331,13 @@ export default function SimulatePage() {
     })();
   }, [caseQuery]);
 
-  const left = <DocList docs={docs} activeId={activeDocId} onSelect={setActiveDocId} />;
+  const left = (
+    <DocList
+      docs={docs}
+      activeId={activeDocId}
+      onSelect={setActiveDocId}
+    />
+  );
   const rightHeader = { title: "AI 분석 결과" };
 
   const isLawLoading = laws === null && !lawErr && !!lawQuery;
@@ -227,23 +349,89 @@ export default function SimulatePage() {
         <div className="w-full p-4 pb-24 overflow-hidden">
           <TwoPaneViewer left={left} rightHeader={rightHeader}>
             <div className="space-y-6">
-              {/* 업로드 문서 미리보기 영역 (mappingPage 스타일) */}
+              {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
               <section className="w-full max-w-3xl mx-auto">
                 <h3 className="text-base font-semibold mb-2">업로드 문서</h3>
                 <div className="rounded-xl border border-2 border-[#113F67] bg-white p-3">
-                  <div className="flex items-center gap-4">
-                    <div className="w-full h-40 sm:h-44 md:h-48 rounded-lg overflow-hidden bg-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium text-gray-800">
+                      {activeDoc ? activeDoc.name : "문서를 선택해 주세요"}
+                    </div>
+
+                    {activeDoc?.type === "pdf" && (
+                      <div className="flex items-center gap-2 text-xs text-gray-700">
+                        <button
+                          onClick={() =>
+                            setPageNumber((p) => Math.max(1, p - 1))
+                          }
+                          disabled={pageNumber <= 1}
+                          className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
+                            pageNumber > 1
+                              ? "hover:bg-gray-100"
+                              : "opacity-40 cursor-not-allowed"
+                          }`}
+                        >
+                          ‹
+                        </button>
+                        <span className="tabular-nums">
+                          {pageNumber} / {numPages}p
+                        </span>
+                        <button
+                          onClick={() =>
+                            setPageNumber((p) =>
+                              Math.min(numPages, p + 1),
+                            )
+                          }
+                          disabled={pageNumber >= numPages}
+                          className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
+                            pageNumber < numPages
+                              ? "hover:bg-gray-100"
+                              : "opacity-40 cursor-not-allowed"
+                          }`}
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="w-full rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                    {activeDoc && activeSrc ? (
+                      activeDoc.type === "pdf" ? (
+                        <PdfViewer
+                          src={activeSrc}
+                          page={pageNumber}
+                          width={PAGE_WIDTH}
+                          onLoad={(n) => setNumPages(n)}
+                          onError={handlePdfLoadError}
+                        />
+                      ) : activeDoc.type === "image" ? (
+                        <img
+                          src={activeSrc}
+                          alt={activeDoc.name}
+                          className="w-full h-40 sm:h-44 md:h-48 object-contain bg-gray-100"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="py-10 text-sm text-gray-500">
+                          미리보기를 지원하지 않는 형식입니다.
+                        </div>
+                      )
+                    ) : (
                       <img
                         src={PLACEHOLDER}
                         alt={activeDoc?.name ?? "미리보기"}
-                        className="w-full h-full object-cover"
+                        className="w-full h-40 sm:h-44 md:h-48 object-cover"
                         loading="lazy"
                       />
-                    </div>
+                    )}
                   </div>
+
                   {activeDoc && (
                     <div className="mt-3 text-xs text-gray-700">
-                      <span className="font-semibold text-[#113F67]">선택된 문서:&nbsp;</span>
+                      <span className="font-semibold text-[#113F67]">
+                        선택된 문서:&nbsp;
+                      </span>
                       {activeDoc.name}
                     </div>
                   )}
@@ -257,7 +445,9 @@ export default function SimulatePage() {
 
               {/* AI 분석 요약 */}
               <section className="w-full max-w-3xl mx-auto space-y-4">
-                <h1 className="text-xl font-bold mb-1 text-[#113F67]">AI 분석 요약</h1>
+                <h1 className="text-xl font-bold mb-1 text-[#113F67]">
+                  AI 분석 요약
+                </h1>
 
                 {uploaded.length === 0 ? (
                   <p className="text-sm text-gray-500">
@@ -271,7 +461,9 @@ export default function SimulatePage() {
 
                       const lawInput = analysis?.law_input;
                       const caseInput = analysis?.case_input;
-                      const rating = analysis?.rating?.label as string | undefined;
+                      const rating = analysis?.rating?.label as
+                        | string
+                        | undefined;
                       const reasons = (analysis?.rating?.reasons ?? []) as string[];
 
                       return (
@@ -339,7 +531,9 @@ export default function SimulatePage() {
                 )}
 
                 {!caseErr && (!cases || cases.length === 0) && (
-                  <p className="text-sm text-gray-500">추천할 판례가 아직 없습니다.</p>
+                  <p className="text-sm text-gray-500">
+                    추천할 판례가 아직 없습니다.
+                  </p>
                 )}
 
                 {cases && cases.length > 0 && <CaseAccordion cases={cases} />}
@@ -362,12 +556,20 @@ export default function SimulatePage() {
                 )}
 
                 {isLawLoading && (
-                  <p className="text-sm text-gray-500">관련 법령을 불러오는 중입니다…</p>
+                  <p className="text-sm text-gray-500">
+                    관련 법령을 불러오는 중입니다…
+                  </p>
                 )}
 
-                {!isLawLoading && !lawErr && laws && laws.length === 0 && !hasNoLawQuery && (
-                  <p className="text-sm text-gray-500">추천할 법령이 없습니다.</p>
-                )}
+                {!isLawLoading &&
+                  !lawErr &&
+                  laws &&
+                  laws.length === 0 &&
+                  !hasNoLawQuery && (
+                    <p className="text-sm text-gray-500">
+                      추천할 법령이 없습니다.
+                    </p>
+                  )}
 
                 {!isLawLoading && !lawErr && laws && laws.length > 0 && (
                   <LawAccordionSimple laws={laws} />
@@ -403,7 +605,9 @@ function CaseBlock({ item }: { item: CaseItem }) {
         className="flex w-full items-center justify-between px-4 py-3 text-left"
       >
         <div>
-          <div className="text-sm font-semibold text-gray-900">{item.name}</div>
+          <div className="text-sm font-semibold text-gray-900">
+            {item.name}
+          </div>
           <div className="mt-1 text-xs text-gray-500">
             {item.court} · {item.date}
           </div>
@@ -416,7 +620,9 @@ function CaseBlock({ item }: { item: CaseItem }) {
       {open && (
         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
           {item.summary ? (
-            <p className="whitespace-pre-wrap text-xs text-gray-700">{item.summary}</p>
+            <p className="whitespace-pre-wrap text-xs text-gray-700">
+              {item.summary}
+            </p>
           ) : (
             <p className="text-xs text-gray-400">요약 정보가 없습니다.</p>
           )}
@@ -454,7 +660,9 @@ function LawBlock({ law }: { law: LawWithArticles }) {
             {law.lawName || law.lawId}
           </div>
           <div className="mt-1 text-xs text-gray-500">
-            {articles.length > 0 ? `${articles.length}개 조항` : "조문 정보 없음"}
+            {articles.length > 0
+              ? `${articles.length}개 조항`
+              : "조문 정보 없음"}
           </div>
         </div>
         <span className="ml-4 text-[11px] text-gray-400">
@@ -479,7 +687,9 @@ function LawBlock({ law }: { law: LawWithArticles }) {
                 className="rounded-xl bg-white px-3 py-2 shadow-sm border border-gray-100"
               >
                 {title && (
-                  <div className="text-xs font-semibold text-gray-900">{title}</div>
+                  <div className="text-xs font-semibold text-gray-900">
+                    {title}
+                  </div>
                 )}
                 {text && (
                   <p className="mt-1 text-[11px] text-gray-700 whitespace-pre-wrap">
