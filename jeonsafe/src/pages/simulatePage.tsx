@@ -1,4 +1,4 @@
-// src/pages/SimulatePage.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useMemo } from "react";
 import { useProgress } from "../stores/useProgress";
 import type { LawWithArticles } from "../types/law";
@@ -165,42 +165,6 @@ export default function SimulatePage() {
 
   // 🔹 presigned view URL 로딩
   useEffect(() => {
-    setPos("post", 2);
-  }, [setPos]);
-
-  // 업로드 목록이 바뀌면 activeDocId 보정
-  useEffect(() => {
-    if (docs.length === 0) {
-      setActiveDocId(0);
-      return;
-    }
-    const exists = docs.some((d) => d.id === activeDocId);
-    if (!exists) {
-      setActiveDocId(docs[0].id);
-    }
-  }, [docs, activeDocId]);
-
-  const activeDoc = docs.find((d) => d.id === activeDocId) ?? docs[0];
-
-  // === 검색용 쿼리 추출 ===
-  const lawQuery = uploaded
-    .map((file) => analysisById[String(file.id)]?.law_input?.trim())
-    .filter((v): v is string => !!v && v.length > 0)
-    .join("\n");
-
-  const caseQuery = uploaded
-    .map((file) => analysisById[String(file.id)]?.case_input?.trim())
-    .filter((v): v is string => !!v && v.length > 0)
-    .join("\n");
-
-  // === 관련 법령 검색 (/ai/laws/search) ===
-  useEffect(() => {
-    if (!lawQuery) {
-      setLaws([]);
-      setLawErr(null);
-      return;
-    }
-
     (async () => {
       if (!uploaded || uploaded.length === 0) return;
 

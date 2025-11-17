@@ -1,4 +1,4 @@
-// src/pages/MappingPage.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 import TwoPaneViewer from "../components/TwoPaneViewer";
