@@ -14,22 +14,25 @@ type Props = {
 export default function ReportButton({
   onGenerate,
   onReset,
+  // 아래 props들은 더 이상 사용하지 않지만,
+  // 기존 코드와의 호환을 위해 그대로 두었어요.
   initialTitle = "",
   requireTitle = true,
   disabled = false,
-  label = "기록 저장",
-  placeholder = "기록의 제목을 적어주세요.",
+  label = "리포트 다운로드",
+  placeholder = "리포트의 이름을 적어주세요.",
 }: Props) {
-  const [title, setTitle] = useState(initialTitle);
   const [loading, setLoading] = useState(false);
 
-  const finalDisabled = disabled || loading || (requireTitle && title.trim().length === 0);
+  // 이제 제목 입력이 없으므로 disabled는 외부 props + 로딩만 고려
+  const finalDisabled = disabled || loading;
 
   const handleClick = async () => {
     if (finalDisabled) return;
     try {
       setLoading(true);
-      await onGenerate(title.trim());
+      // 제목 입력이 없으므로 빈 문자열로 호출
+      await onGenerate("");
     } finally {
       setLoading(false);
     }
@@ -39,14 +42,8 @@ export default function ReportButton({
     <footer className="fixed bottom-0 w-full bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-t border-gray-200">
       <div className="mx-auto max-w-4xl px-6">
         <div className="flex flex-col items-center gap-2 py-6">
-          {/* 입력 + 버튼 */}
-          <div className="flex w-full max-w-2xl items-center justify-center gap-3">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={placeholder}
-              className="w-full rounded-full bg-gray-100 px-6 py-3 text-gray-800 placeholder:text-gray-400 outline-none ring-1 ring-transparent focus:ring-[#113F67]/30"
-            />
+          {/* 버튼만 */}
+          <div className="flex w-full max-w-2xl items-center justify-center">
             <button
               onClick={handleClick}
               disabled={finalDisabled}
