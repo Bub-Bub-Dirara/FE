@@ -16,6 +16,25 @@ import { useRiskStore } from "../stores/useRiskStore";
 import DocViewerPanel from "../components/viewers/DocViewerPanel";
 import { RelatedCasesSection, RelatedLawsSection } from "../components/RelatedSections";
 import AISummarySection from "../components/AISummarySection";
+import type { AnalyzeItem } from "../lib/analyzeEvidence";
+
+// PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
+import {
+  pdf,
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Font,
+} from "@react-pdf/renderer";
+
+// 한글 폰트 등록 (public/fonts/Pretendard-Regular.ttf 기준)
+Font.register({
+  family: "Pretendard",
+  src: "/fonts/Pretendard-Regular.ttf",
+  fontWeight: "normal",
+});
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -59,14 +78,14 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
   const grouped: Record<string, LawWithArticles> = {};
 
   data.items.forEach((item, idx) => {
-    const lawName = item.law_name;
+    const lawName = item.law_name || "법령명 없음";
 
     if (!grouped[lawName]) {
       grouped[lawName] = {
         lawId: lawName,
         lawName,
         articles: [],
-      } as unknown as LawWithArticles;
+      } as any;
     }
 
     const law = grouped[lawName];
@@ -89,6 +108,207 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
   return Object.values(grouped);
 }
 
+// ✅ 리포트에 담을 데이터 구조 (mappingPage와 동일 형식)
+type SimulateReportData = {
+  fileName: string;
+  aiSummary: {
+    riskLabel?: string;
+    fileDisplayName?: string;
+    lawAnalysis?: string;
+    caseAnalysis?: string;
+    bullets: string[];
+  };
+  uploadedDoc: {
+    fileName: string;
+    description?: string;
+  };
+  laws: LawWithArticles[];
+  cases: CaseItem[];
+};
+
+// PDF 스타일 정의
+const reportStyles = StyleSheet.create({
+  page: {
+    padding: 24,
+    fontSize: 11,
+    lineHeight: 1.4,
+    fontFamily: "Pretendard",
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 12,
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    marginBottom: 6,
+  },
+  labelRow: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  label: {
+    fontWeight: "bold",
+    marginRight: 4,
+  },
+  bulletList: {
+    marginTop: 4,
+    marginLeft: 10,
+  },
+  bulletItem: {
+    flexDirection: "row",
+    marginBottom: 2,
+  },
+  bulletDot: {
+    width: 8,
+  },
+  bulletText: {
+    flex: 1,
+  },
+  lawGroup: {
+    marginBottom: 8,
+    paddingBottom: 4,
+    borderBottomWidth: 0.5,
+  },
+  lawGroupHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  lawGroupTitle: {
+    fontWeight: "bold",
+  },
+  article: {
+    marginLeft: 8,
+    marginTop: 2,
+  },
+  articleTitle: {
+    fontWeight: "bold",
+  },
+  caseItem: {
+    marginBottom: 8,
+    paddingBottom: 4,
+    borderBottomWidth: 0.5,
+  },
+  caseTitle: {
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  caseMeta: {
+    fontSize: 10,
+    marginBottom: 2,
+  },
+});
+
+// ✅ 실제 PDF 문서 컴포넌트 (simulate용)
+function SimulateReportDocument({ data }: { data: SimulateReportData }) {
+  const { aiSummary, uploadedDoc, laws, cases } = data;
+
+  return (
+    <Document>
+      <Page size="A4" style={reportStyles.page}>
+        {/* 상단 제목/파일명 */}
+        <View style={reportStyles.section}>
+          <Text style={reportStyles.title}>사후처리 AI 분석 리포트</Text>
+          <Text>파일명: {data.fileName}</Text>
+        </View>
+
+        {/* AI 분석 요약 */}
+        <View style={reportStyles.section}>
+          <Text style={reportStyles.sectionTitle}>AI 분석 요약</Text>
+
+          {aiSummary.fileDisplayName && (
+            <Text>· {aiSummary.fileDisplayName}</Text>
+          )}
+
+          <View style={reportStyles.labelRow}>
+            <Text style={reportStyles.label}>위험도:</Text>
+            <Text>{aiSummary.riskLabel ?? "-"}</Text>
+          </View>
+
+          {aiSummary.lawAnalysis && (
+            <View style={{ marginBottom: 2 }}>
+              <Text style={reportStyles.label}>법령 관점 분석:</Text>
+              <Text>{aiSummary.lawAnalysis}</Text>
+            </View>
+          )}
+
+          {aiSummary.caseAnalysis && (
+            <View>
+              <Text style={reportStyles.label}>판례 관점 분석:</Text>
+              <Text>{aiSummary.caseAnalysis}</Text>
+            </View>
+          )}
+
+          {aiSummary.bullets.length > 0 && (
+            <View style={reportStyles.bulletList}>
+              {aiSummary.bullets.map((b, idx) => (
+                <View key={idx} style={reportStyles.bulletItem}>
+                  <Text style={reportStyles.bulletDot}>•</Text>
+                  <Text style={reportStyles.bulletText}>{b}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* 업로드 문서 */}
+        <View style={reportStyles.section}>
+          <Text style={reportStyles.sectionTitle}>업로드 문서</Text>
+          <Text>{uploadedDoc.fileName}</Text>
+          {uploadedDoc.description && <Text>{uploadedDoc.description}</Text>}
+        </View>
+
+        {/* 관련 법령 조항 */}
+        <View style={reportStyles.section}>
+          <Text style={reportStyles.sectionTitle}>관련 법령 조항</Text>
+          {(!laws || laws.length === 0) && <Text>연동된 법령이 없습니다.</Text>}
+          {laws?.map((law) => (
+            <View key={law.lawId} style={reportStyles.lawGroup}>
+              <View style={reportStyles.lawGroupHeader}>
+                <Text style={reportStyles.lawGroupTitle}>{law.lawName}</Text>
+                {law.articles?.length ? (
+                  <Text>{law.articles.length}개 조항</Text>
+                ) : null}
+              </View>
+              {law.articles?.map((a: any) => (
+                <View
+                  key={a.key ?? `${a.title}-${a.number}`}
+                  style={reportStyles.article}
+                >
+                  <Text style={reportStyles.articleTitle}>{a.title}</Text>
+                  {a.text && <Text>{a.text}</Text>}
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        {/* 관련 판례 */}
+        <View style={reportStyles.section}>
+          <Text style={reportStyles.sectionTitle}>관련 판례</Text>
+          {(!cases || cases.length === 0) && <Text>연동된 판례가 없습니다.</Text>}
+          {cases?.map((c) => (
+            <View key={c.id} style={reportStyles.caseItem}>
+              <Text style={reportStyles.caseTitle}>{c.name}</Text>
+              {(c.court || c.date) && (
+                <Text style={reportStyles.caseMeta}>
+                  {c.court ?? ""} {c.date ? `· ${c.date}` : ""}
+                </Text>
+              )}
+              {c.summary && <Text>{c.summary}</Text>}
+            </View>
+          ))}
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
 export default function SimulatePage() {
   const { setPos } = useProgress();
 
@@ -100,11 +320,6 @@ export default function SimulatePage() {
 
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
-
-  const onGenerateReport = async () => {
-    await new Promise((r) => setTimeout(r, 600));
-    alert("리포트가 생성되었습니다. (데모)");
-  };
 
   // 좌측 DocList 데이터 (업로드된 파일 목록) + 타입 구분
   const docs: Doc[] = useMemo(
@@ -174,7 +389,9 @@ export default function SimulatePage() {
             console.error("invalid view-url response:", raw);
             continue;
           }
-          map[file.id] = url;
+          if (file.id != null) {
+            map[file.id] = url;
+          }
         } catch (e) {
           console.error("Failed to resolve view URL in SimulatePage:", file.id, e);
         }
@@ -197,10 +414,11 @@ export default function SimulatePage() {
   );
 
   const [docPanelOpen, setDocPanelOpen] = useState(true);
+
   // 🔹 PDF 로드 에러 시 presigned URL 재발급
   const handlePdfLoadError = async (err: unknown) => {
     console.warn("PDF Load Error (SimulatePage):", err);
-    if (!activeDoc) return;
+    if (!activeDoc || activeDoc.id == null) return;
     try {
       const fresh = await getDownloadUrl(activeDoc.id);
       setSrcMap((m) => ({ ...m, [activeDoc.id]: fresh }));
@@ -293,6 +511,63 @@ export default function SimulatePage() {
     })();
   }, [caseQuery]);
 
+  // ✅ 리포트에 넣을 데이터 하나로 묶기 (mappingPage와 동일 로직)
+  const reportData = useMemo<SimulateReportData | null>(() => {
+    if (!activeDoc) return null;
+
+    const baseName = activeDoc.name ?? "계약서.pdf";
+
+    const analysis: AnalyzeItem | undefined =
+      activeDoc.id != null
+        ? (analysisById?.[String(activeDoc.id)] as AnalyzeItem | undefined)
+        : undefined;
+
+    const riskySentences: any[] =
+      ((activeRisk as any)?.risky_sentences as any[]) ?? [];
+
+    const bullets =
+      riskySentences
+        .map(
+          (s) =>
+            s.summary ??
+            s.description ??
+            s.reason ??
+            s.text ??
+            s.highlight_text ??
+            "",
+        )
+        .filter(
+          (t: string) => typeof t === "string" && t.trim().length > 0,
+        ) ?? [];
+
+    return {
+      fileName: baseName,
+      aiSummary: {
+        riskLabel:
+          (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
+        fileDisplayName:
+          (analysis as any)?.file_display_name ??
+          activeDoc.name ??
+          baseName,
+        lawAnalysis:
+          (analysis as any)?.law_view ??
+          (analysis as any)?.law_analysis ??
+          (activeRisk as any)?.law_view,
+        caseAnalysis:
+          (analysis as any)?.case_view ??
+          (analysis as any)?.case_analysis ??
+          (activeRisk as any)?.case_view,
+        bullets,
+      },
+      uploadedDoc: {
+        fileName: baseName,
+        description: "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
+      },
+      laws: laws ?? [],
+      cases: cases ?? [],
+    };
+  }, [activeDoc, activeRisk, analysisById, laws, cases]);
+
   const left = (
     <DocList
       docs={docs}
@@ -305,6 +580,37 @@ export default function SimulatePage() {
   const isLawLoading = laws === null && !lawErr && !!lawQuery;
   const hasNoLawQuery = !lawQuery;
 
+  // ✅ ReportButton이 호출하는 PDF 생성 로직 (백엔드 호출 X)
+  const onGenerateReport = async (title?: string) => {
+    if (!reportData) {
+      alert(
+        "리포트에 포함할 데이터가 없습니다. 문서와 분석 내용을 먼저 확인해주세요.",
+      );
+      return;
+    }
+
+    try {
+      const blob = await pdf(
+        <SimulateReportDocument data={reportData} />,
+      ).toBlob();
+
+      const baseName = reportData.fileName.replace(/\.[^/.]+$/, "") || "report";
+      const safeTitle = (title?.trim().length ? title.trim() : "") || baseName;
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeTitle}_리포트.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("PDF 생성 중 오류", e);
+      alert("PDF 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+  };
+
   return (
     <div className="min-h-dvh overflow-hidden bg-white">
       <main className="flex-1">
@@ -313,6 +619,7 @@ export default function SimulatePage() {
             <div className="space-y-6">
               {/* AI 분석 요약 */}
               <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
+
               {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
               <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
                 업로드 문서
@@ -332,7 +639,7 @@ export default function SimulatePage() {
                     {docPanelOpen ? "접기" : "자세히"}
                   </span>
                 </button>
-              
+
                 {docPanelOpen && (
                   <div className="border-t border-gray-200">
                     <DocViewerPanel
@@ -348,6 +655,7 @@ export default function SimulatePage() {
                   </div>
                 )}
               </div>
+
               <RelatedLawsSection
                 laws={laws}
                 lawErr={lawErr}
@@ -363,7 +671,14 @@ export default function SimulatePage() {
           </TwoPaneViewer>
         </div>
       </main>
-      <ReportButton onGenerate={onGenerateReport} />
+
+      <ReportButton
+        onGenerate={onGenerateReport}
+        label="리포트 다운로드"
+        placeholder="리포트 제목을 입력해 주세요. (비워두면 파일명 기준)"
+        disabled={docs.length === 0}
+        requireTitle={false}
+      />
     </div>
   );
 }
