@@ -3,8 +3,6 @@ import { useProgress } from "../stores/useProgress";
 import TwoPaneViewer from "../components/TwoPaneViewer";
 import DocList from "../components/DocList";
 import NextStepButton from "../components/NextStepButton";
-import PdfViewer from "../components/viewers/PdfViewer";
-import ImageViewer from "../components/viewers/ImageViewer";
 import type { Doc } from "../types/doc";
 import type { FileRecord } from "../types/file";
 import { useUploadStore } from "../stores/useUploadStore";
@@ -16,19 +14,13 @@ import { useRiskStore } from "../stores/useRiskStore";
 import {
   extractRisksForUrl,
   type RiskySentence,
-  type RiskLabel,
 } from "../lib/extractRisks";
+import { makePdfHighlightsFromRiskySentences } from "../lib/pdfHighlights";
+import PdfPageNavigator from "../components/viewers/PdfPageNavigator";
+import DocViewerPanel from "../components/viewers/DocViewerPanel";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const VIEW_W = 700;
-const PAGE_WIDTH = VIEW_W - 16 * 2;
-
-const RISK_HIGHLIGHT_COLOR: Record<RiskLabel, string> = {
-  G: "rgba(34,197,94,0.25)",
-  M: "rgba(245,158,11,0.25)",
-  B: "rgba(248,113,113,0.25)",
-};
 
 export default function RiskPage() {
   const { setPos } = useProgress();
@@ -153,22 +145,7 @@ export default function RiskPage() {
 
   // PdfViewer에 넘겨 줄 좌표 기반 하이라이트 정보
   const pdfHighlights = useMemo(
-    () =>
-      riskySentences.flatMap((r, idx) =>
-        (r.positions ?? []).map((p) => ({
-          page: p.page,
-          x: p.x,
-          y: p.y,
-          w: p.w,
-          h: p.h,
-          pageWidth: p.page_width,
-          pageHeight: p.page_height,
-          color: RISK_HIGHLIGHT_COLOR[r.risk_label],
-          reason: r.reason,
-          index: idx,
-          sentence: r.sentence,
-        })),
-      ),
+    () => makePdfHighlightsFromRiskySentences(riskySentences),
     [riskySentences],
   );
 
@@ -189,33 +166,12 @@ export default function RiskPage() {
 
   const rightFooter =
     activeDoc?.type === "pdf" ? (
-      <div className="flex items-center justify-center gap-2">
-        <button
-          onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
-          disabled={pageNumber <= 1}
-          className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-            pageNumber > 1
-              ? "hover:bg-gray-100"
-              : "opacity-40 cursor-not-allowed"
-          }`}
-        >
-          ‹
-        </button>
-        <span className="text-xs text-gray-700 tabular-nums">
-          {pageNumber} / {numPages}페이지
-        </span>
-        <button
-          onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
-          disabled={pageNumber >= numPages}
-          className={`w-7 h-7 flex items-center justify-center rounded-full border border-gray-300 shadow-sm ${
-            pageNumber < numPages
-              ? "hover:bg-gray-100"
-              : "opacity-40 cursor-not-allowed"
-          }`}
-        >
-          ›
-        </button>
-      </div>
+      <PdfPageNavigator
+        page={pageNumber}
+        totalPages={numPages}
+        suffix="페이지"
+        onChange={(next) => setPageNumber(next)}
+      />
     ) : null;
 
   return (
@@ -223,35 +179,22 @@ export default function RiskPage() {
       <main className="flex-1">
         <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
           <TwoPaneViewer
-            left={left}
-            rightHeader={rightHeader}
-            rightFooter={rightFooter}
-          >
-            {activeDoc && activeSrc ? (
-              activeDoc.type === "pdf" ? (
-                <PdfViewer
-                  src={activeSrc}
-                  page={pageNumber}
-                  width={PAGE_WIDTH}
-                  onLoad={(n) => setNumPages(n)}
-                  onError={handlePdfLoadError}
-                  highlights={pdfHighlights}
-                />
-              ) : activeDoc.type === "image" ? (
-                <ImageViewer
-                  src={activeSrc}
-                  width={PAGE_WIDTH}
-                  alt={activeDoc.name}
-                />
-              ) : (
-                <div className="text-sm text-gray-500">
-                  미리보기를 지원하지 않는 형식입니다.
-                </div>
-              )
-            ) : (
-              <div className="text-sm text-gray-400">문서를 선택해 주세요.</div>
-            )}
-          </TwoPaneViewer>
+          left={left}
+          rightHeader={rightHeader}
+          rightFooter={rightFooter}
+        >
+          <DocViewerPanel
+            variant="risk"
+            activeDoc={activeDoc}
+            activeSrc={activeSrc}
+            pageNumber={pageNumber}
+            numPages={numPages}
+            onChangePage={setPageNumber}
+            onPdfLoad={setNumPages}
+            onPdfError={handlePdfLoadError}
+            highlights={pdfHighlights}
+          />
+        </TwoPaneViewer>
         </div>
       </main>
 

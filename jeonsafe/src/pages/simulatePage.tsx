@@ -4,19 +4,18 @@ import { useProgress } from "../stores/useProgress";
 import type { LawWithArticles } from "../types/law";
 import { useUploadStore } from "../stores/useUploadStore";
 import { http } from "../lib/http";
-
-// mappingPage UI에서 사용하는 컴포넌트들
 import TwoPaneViewer from "../components/TwoPaneViewer";
 import DocList from "../components/DocList";
 import type { Doc } from "../types/doc";
-
-// 🔹 PDF 뷰어 & 파일 URL 유틸
-import PdfViewer from "../components/viewers/PdfViewer";
 import { resolveViewUrl, getDownloadUrl } from "../lib/files";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import ReportButton from "../components/ReportButton";
-import PageNavigator from "../components/viewers/PdfPageNavigator";
+import { makePdfHighlightsFromExtractItem } from "../lib/pdfHighlights";
+import { useRiskStore } from "../stores/useRiskStore";
+import DocViewerPanel from "../components/viewers/DocViewerPanel";
+import { RelatedCasesSection, RelatedLawsSection } from "../components/RelatedSections";
+import AISummarySection from "../components/AISummarySection";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -90,23 +89,6 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
 
   return Object.values(grouped);
 }
-
-// mappingPage에서 쓰던 플레이스홀더 이미지 (PDF 못 불러올 때 fallback)
-const PLACEHOLDER =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="220">
-       <rect width="100%" height="100%" fill="#f3f4f6"/>
-       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-             font-family="sans-serif" font-size="16" fill="#9ca3af">
-         미리보기 이미지가 없습니다
-       </text>
-     </svg>`,
-  );
-
-// Risk/Mapping과 같은 폭
-const VIEW_W = 700;
-const PAGE_WIDTH = VIEW_W - 16 * 2;
 
 export default function SimulatePage() {
   const { setPos } = useProgress();
@@ -205,6 +187,15 @@ export default function SimulatePage() {
   // 🔹 현재 문서의 src
   const activeSrc =
     activeDoc && activeDoc.id != null ? srcMap[activeDoc.id] ?? null : null;
+
+  const activeRisk = useRiskStore((s) =>
+    activeDoc && activeDoc.id != null ? s.items?.[activeDoc.id] ?? null : null,
+  );
+
+  const pdfHighlights = useMemo(
+    () => makePdfHighlightsFromExtractItem(activeRisk),
+    [activeRisk],
+  );
 
   // 🔹 PDF 로드 에러 시 presigned URL 재발급
   const handlePdfLoadError = async (err: unknown) => {
@@ -320,320 +311,39 @@ export default function SimulatePage() {
         <div className="w-full p-4 pb-24 overflow-hidden">
           <TwoPaneViewer left={left} rightHeader={rightHeader}>
             <div className="space-y-6">
-
-            {/* AI 분석 요약 */}
-              <section className="w-full max-w-3xl mx-auto space-y-4">
-                <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
-                  AI 분석 요약
-                </h2>
-
-                {!activeDoc ? (
-                  <p className="text-sm text-gray-500">
-                    선택된 문서가 없습니다. 좌측에서 문서를 선택해 주세요.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {(() => {
-                      const id = String(activeDoc.id);
-                      const analysis = analysisById[id];
-
-                      const lawInput = analysis?.law_input;
-                      const caseInput = analysis?.case_input;
-                      const rating = analysis?.rating?.label as string | undefined;
-                      const reasons = (analysis?.rating?.reasons ?? []) as string[];
-
-                      return (
-                        <div
-                          key={id}
-                          className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-sm font-semibold text-gray-800">
-                              {activeDoc.name}
-                            </div>
-                            {rating && (
-                              <span className="inline-flex items-center rounded-full border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700">
-                                위험도: {rating}
-                              </span>
-                            )}
-                          </div>
-
-                          {lawInput && (
-                            <div className="mt-2 text-xs text-gray-700">
-                              <span className="font-semibold text-[#113F67]">
-                                법령 관점 분석:&nbsp;
-                              </span>
-                              {lawInput}
-                            </div>
-                          )}
-
-                          {caseInput && (
-                            <div className="mt-1 text-xs text-gray-700">
-                              <span className="font-semibold text-[#113F67]">
-                                판례 관점 분석:&nbsp;
-                              </span>
-                              {caseInput}
-                            </div>
-                          )}
-
-                          {reasons.length > 0 && (
-                            <ul className="mt-2 list-disc pl-5 text-[11px] text-gray-600">
-                              {reasons.map((r, i) => (
-                                <li key={i}>{r}</li>
-                              ))}
-                            </ul>
-                          )}
-
-                          {!analysis && (
-                            <p className="mt-2 text-[11px] text-gray-400">
-                              이 파일에 대한 AI 분석 결과가 아직 없습니다.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </section>
-
+              {/* AI 분석 요약 */}
+              <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
               {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
               <section className="w-full">
-                <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
-                  업로드 문서
-                </h2>
-                <div className="rounded-xl border border-2 border-[#113F67] bg-white p-3">
-                  <div className="w-full flex items-center justify-center mb-3">
-                    <div
-                      className="bg-gray-100 rounded-lg border border-gray-200 shadow-sm overflow-y-auto overflow-x-auto"
-                      style={{ maxWidth: 720, height: 300 }} // 크기 조절 포인트
-                    >
-                      <div className="p-3 flex items-center justify-center">
-                        {activeDoc && activeSrc ? (
-                          activeDoc.type === "pdf" ? (
-                            <PdfViewer
-                              src={activeSrc}
-                              page={pageNumber}
-                              width={PAGE_WIDTH} // 이미 위에서 const PAGE_WIDTH 있음
-                              onLoad={(n) => setNumPages(n)}
-                              onError={handlePdfLoadError}
-                            />
-                          ) : activeDoc.type === "image" ? (
-                            <img
-                              src={activeSrc}
-                              alt={activeDoc.name}
-                              className="max-w-full max-h-[260px] object-contain bg-gray-100"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="py-10 text-sm text-gray-500">
-                              미리보기를 지원하지 않는 형식입니다.
-                            </div>
-                          )
-                        ) : (
-                          <img
-                            src={PLACEHOLDER}
-                            alt={activeDoc?.name ?? "미리보기"}
-                            className="max-w-full max-h-[260px] object-contain"
-                            loading="lazy"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                    {activeDoc?.type === "pdf" && (
-                      <PageNavigator
-                        page={pageNumber}
-                        totalPages={numPages}
-                        suffix="p"
-                        onChange={(next) => setPageNumber(next)}
-                      />
-                    )}
-                    </div>
+                {/* 업로드 문서 */}
+                <DocViewerPanel
+                  activeDoc={activeDoc}
+                  activeSrc={activeSrc}
+                  pageNumber={pageNumber}
+                  numPages={numPages}
+                  onChangePage={setPageNumber}
+                  onPdfLoad={(n) => setNumPages(n)}
+                  onPdfError={handlePdfLoadError}
+                  highlights={pdfHighlights}
+                />
               </section>
 
-              {/* 관련 판례 – 예쁜 아코디언 카드 UI */}
-              <section className="w-full max-w-3xl mx-auto space-y-3">
-                <h2 className="text-xl font-bold">관련 판례</h2>
+              <RelatedLawsSection
+                laws={laws}
+                lawErr={lawErr}
+                hasNoLawQuery={hasNoLawQuery}
+                isLawLoading={isLawLoading}
+              />
 
-                {caseErr && (
-                  <p className="text-sm text-red-600">
-                    관련 판례를 불러오는 중 오류가 발생했습니다: {caseErr}
-                  </p>
-                )}
-
-                {!caseErr && (!cases || cases.length === 0) && (
-                  <p className="text-sm text-gray-500">
-                    추천할 판례가 아직 없습니다.
-                  </p>
-                )}
-
-                {cases && cases.length > 0 && <CaseAccordion cases={cases} />}
-              </section>
-
-              {/* 관련 법령 조항 – 판례와 같은 카드형 아코디언 UI */}
-              <section className="w-full max-w-3xl mx-auto">
-                <h2 className="mb-3 text-xl font-bold">관련 법령 조항</h2>
-
-                {lawErr && (
-                  <p className="text-sm text-red-600">
-                    관련 법령을 불러오는 중 오류가 발생했습니다: {lawErr}
-                  </p>
-                )}
-
-                {hasNoLawQuery && !lawErr && (
-                  <p className="text-sm text-gray-500">
-                    분석 결과에서 추출된 법령 검색어가 없습니다.
-                  </p>
-                )}
-
-                {isLawLoading && (
-                  <p className="text-sm text-gray-500">
-                    관련 법령을 불러오는 중입니다…
-                  </p>
-                )}
-
-                {!isLawLoading &&
-                  !lawErr &&
-                  laws &&
-                  laws.length === 0 &&
-                  !hasNoLawQuery && (
-                    <p className="text-sm text-gray-500">
-                      추천할 법령이 없습니다.
-                    </p>
-                  )}
-
-                {!isLawLoading && !lawErr && laws && laws.length > 0 && (
-                  <LawAccordionSimple laws={laws} />
-                )}
-              </section>
+              <RelatedCasesSection
+                cases={cases}
+                caseErr={caseErr}
+              />
             </div>
           </TwoPaneViewer>
         </div>
       </main>
       <ReportButton onGenerate={onGenerateReport} />
-    </div>
-  );
-}
-
-/** 관련 판례: 카드형 아코디언 */
-function CaseAccordion({ cases }: { cases: CaseItem[] }) {
-  return (
-    <div className="space-y-4">
-      {cases.map((c) => (
-        <CaseBlock key={c.id} item={c} />
-      ))}
-    </div>
-  );
-}
-
-function CaseBlock({ item }: { item: CaseItem }) {
-  const [open, setOpen] = useState(true);
-
-  return (
-    <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
-      >
-        <div>
-          <div className="text-sm font-semibold text-gray-900">
-            {item.name}
-          </div>
-          <div className="mt-1 text-xs text-gray-500">
-            {item.court} · {item.date}
-          </div>
-        </div>
-        <span className="ml-4 text-[11px] text-gray-400">
-          {open ? "접기" : "자세히"}
-        </span>
-      </button>
-
-      {open && (
-        <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
-          {item.summary ? (
-            <p className="whitespace-pre-wrap text-xs text-gray-700">
-              {item.summary}
-            </p>
-          ) : (
-            <p className="text-xs text-gray-400">요약 정보가 없습니다.</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 관련 법령 조항: 판례와 동일한 스타일의 카드형 아코디언 */
-function LawAccordionSimple({ laws }: { laws: LawWithArticles[] }) {
-  return (
-    <div className="space-y-4">
-      {laws.map((law) => (
-        <LawBlock key={law.lawId ?? law.lawName} law={law} />
-      ))}
-    </div>
-  );
-}
-
-function LawBlock({ law }: { law: LawWithArticles }) {
-  const [open, setOpen] = useState(true);
-
-  const articles = ((law.articles ?? []) as any[]) || [];
-
-  return (
-    <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
-      >
-        <div>
-          <div className="text-sm font-semibold text-gray-900">
-            {law.lawName || law.lawId}
-          </div>
-          <div className="mt-1 text-xs text-gray-500">
-            {articles.length > 0
-              ? `${articles.length}개 조항`
-              : "조문 정보 없음"}
-          </div>
-        </div>
-        <span className="ml-4 text-[11px] text-gray-400">
-          {open ? "접기" : "자세히"}
-        </span>
-      </button>
-
-      {open && (
-        <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 space-y-3">
-          {articles.length === 0 && (
-            <p className="text-xs text-gray-400">표시할 조문이 없습니다.</p>
-          )}
-
-          {articles.map((a) => {
-            const key = a.key ?? a.number ?? a.title;
-            const title = a.title || a.number;
-            const text = a.text ?? a.content ?? "";
-
-            return (
-              <div
-                key={key}
-                className="rounded-xl bg-white px-3 py-2 shadow-sm border border-gray-100"
-              >
-                {title && (
-                  <div className="text-xs font-semibold text-gray-900">
-                    {title}
-                  </div>
-                )}
-                {text && (
-                  <p className="mt-1 text-[11px] text-gray-700 whitespace-pre-wrap">
-                    {text}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
