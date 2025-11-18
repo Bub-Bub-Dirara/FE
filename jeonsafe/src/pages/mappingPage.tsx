@@ -217,6 +217,7 @@ export default function MappingPage() {
     [activeRisk],
   );
 
+  const [docPanelOpen, setDocPanelOpen] = useState(true);
   // 문서 변경 시 페이지 다시 1페이지로
   useEffect(() => {
     setPageNumber(1);
@@ -372,16 +373,41 @@ export default function MappingPage() {
         <div className="w-full p-4 pb-24 overflow-hidden">
           <TwoPaneViewer left={left} rightHeader={rightHeader}>
             <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
-            <DocViewerPanel
-              activeDoc={activeDoc}
-              activeSrc={activeSrc}
-              pageNumber={pageNumber}
-              numPages={numPages}
-              onChangePage={setPageNumber}
-              onPdfLoad={setNumPages}
-              onPdfError={handlePdfLoadError}
-              highlights={pdfHighlights}
-            />
+            <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
+              업로드 문서
+            </h2>
+            <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white mb-6">
+              <button
+                type="button"
+                onClick={() => setDocPanelOpen((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {activeDoc?.name}
+                  </div>
+                </div>
+                <span className="ml-4 text-[11px] text-gray-400">
+                  {docPanelOpen ? "접기" : "자세히"}
+                </span>
+              </button>
+
+              {docPanelOpen && (
+                <div className="border-t border-gray-200">
+                  <DocViewerPanel
+                    activeDoc={activeDoc}
+                    activeSrc={activeSrc}
+                    pageNumber={pageNumber}
+                    numPages={numPages}
+                    onChangePage={setPageNumber}
+                    onPdfLoad={setNumPages}
+                    onPdfError={handlePdfLoadError}
+                    highlights={pdfHighlights}
+                  />
+                </div>
+              )}
+            </div>
+            
             <RelatedLawsSection
               laws={laws}
               lawErr={lawErr}

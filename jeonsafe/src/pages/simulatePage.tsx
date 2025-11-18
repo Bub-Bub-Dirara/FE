@@ -196,6 +196,7 @@ export default function SimulatePage() {
     [activeRisk],
   );
 
+  const [docPanelOpen, setDocPanelOpen] = useState(true);
   // 🔹 PDF 로드 에러 시 presigned URL 재발급
   const handlePdfLoadError = async (err: unknown) => {
     console.warn("PDF Load Error (SimulatePage):", err);
@@ -313,20 +314,40 @@ export default function SimulatePage() {
               {/* AI 분석 요약 */}
               <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
               {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
-              <section className="w-full">
-                {/* 업로드 문서 */}
-                <DocViewerPanel
-                  activeDoc={activeDoc}
-                  activeSrc={activeSrc}
-                  pageNumber={pageNumber}
-                  numPages={numPages}
-                  onChangePage={setPageNumber}
-                  onPdfLoad={(n) => setNumPages(n)}
-                  onPdfError={handlePdfLoadError}
-                  highlights={pdfHighlights}
-                />
-              </section>
-
+              <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
+                업로드 문서
+              </h2>
+              <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white mb-6">
+                <button
+                  type="button"
+                  onClick={() => setDocPanelOpen((v) => !v)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {activeDoc?.name}
+                    </div>
+                  </div>
+                  <span className="ml-4 text-[11px] text-gray-400">
+                    {docPanelOpen ? "접기" : "자세히"}
+                  </span>
+                </button>
+              
+                {docPanelOpen && (
+                  <div className="border-t border-gray-200">
+                    <DocViewerPanel
+                      activeDoc={activeDoc}
+                      activeSrc={activeSrc}
+                      pageNumber={pageNumber}
+                      numPages={numPages}
+                      onChangePage={setPageNumber}
+                      onPdfLoad={setNumPages}
+                      onPdfError={handlePdfLoadError}
+                      highlights={pdfHighlights}
+                    />
+                  </div>
+                )}
+              </div>
               <RelatedLawsSection
                 laws={laws}
                 lawErr={lawErr}

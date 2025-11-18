@@ -37,7 +37,7 @@ export default function NextStepButton({
   const isDisabled = disabled || busy;
 
   return (
-    <footer className="fixed bottom-0 w-full bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-t border-gray-200">
+    <footer className="fixed bottom-0 w-full bg-white border-t border-gray-200">
       <div className="mx-auto max-w-4xl px-6">
         <div className="flex justify-center py-6">
           <button

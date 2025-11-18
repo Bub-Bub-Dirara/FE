@@ -12,7 +12,6 @@ import { useUploadStore } from "../stores/useUploadStore";
 
 export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);
-  const [progress, setProgress] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,13 +32,11 @@ export default function UploadPage() {
   const onBeforeNavigate = async (): Promise<boolean> => {
     if (files.length === 0) return false;
     setBusy(true);
-    setProgress({});
 
     try {
       const uploaded: FileRecord[] = await uploadManyViaApi(
         files,
         "contract",
-        (name, pct) => setProgress((m) => ({ ...m, [name]: pct }))
       );
       setUploaded(uploaded);
 
@@ -62,7 +59,10 @@ export default function UploadPage() {
             <InfoCard
               title="계약서 파일을 업로드해주세요"
               lines={[
-                "PDF, 이미지 등 계약 관련 자료를 등록하면 전세 사기 위험도를 분석할 수 있습니다.",
+                "전세 사기 피해에 대한 손해 배상을 받기 위해서는",
+                "피해를 증빙할 적절한 자료들이 필요해요.",
+                "계약서, 문자 내역, 입금 내역 등 다양한 파일을 업로드 하시면",
+                "증명 자료 적절성 판단 및 추가 자료 요청을 드릴게요!",
               ]}
             />
           ) : (
@@ -79,17 +79,6 @@ export default function UploadPage() {
             className="hidden"
             onChange={onChange}
           />
-
-          {Object.keys(progress).length > 0 && (
-            <div className="mt-4 w-full max-w-2xl text-sm text-gray-600">
-              {files.map((f) => (
-                <div key={f.name} className="flex justify-between py-1">
-                  <span className="truncate">{f.name}</span>
-                  <span>{progress[f.name] ?? 0}%</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </main>
 

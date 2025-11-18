@@ -26,9 +26,6 @@ type Props = {
 
   /** 기본은 Simulate/Mapping용 카드 스타일 */
   variant?: Variant;
-
-  /** Simulate/Mapping에서 쓰는 제목 ("업로드 문서") */
-  title?: string;
 };
 
 export default function DocViewerPanel({
@@ -40,8 +37,7 @@ export default function DocViewerPanel({
   onPdfLoad,
   onPdfError,
   highlights,
-  variant = "card", // ✅ 기본을 카드 모드로
-  title = "업로드 문서",
+  variant = "card",
 }: Props) {
   // 공통: 실제 문서를 그리는 부분만 함수로
   const renderContent = (): ReactNode => {
@@ -100,11 +96,8 @@ export default function DocViewerPanel({
   // 2) Simulate / Mapping 카드 스타일
   // ─────────────────────────────
   return (
-    <section className="w-full mb-6">
-      <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
-        {title}
-      </h2>
-      <div className="rounded-xl border border-2 border-[#113F67] bg-white p-3">
+    <section className="w-full">
+      <div className="rounded-xl border border-2 border-white bg-white p-3">
         <div className="w-full flex items-center justify-center mb-3">
           <div
             className="bg-gray-100 rounded-lg border border-gray-200 shadow-sm overflow-y-auto overflow-x-auto"
@@ -120,7 +113,7 @@ export default function DocViewerPanel({
           <PageNavigator
             page={pageNumber}
             totalPages={numPages}
-            suffix="p"
+            suffix="페이지"
             onChange={onChangePage}
           />
         )}

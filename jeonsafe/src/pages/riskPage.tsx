@@ -175,7 +175,7 @@ export default function RiskPage() {
     ) : null;
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col">
       <main className="flex-1">
         <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
           <TwoPaneViewer
