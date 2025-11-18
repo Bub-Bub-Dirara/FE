@@ -111,37 +111,50 @@ export default function RiskPage() {
   };
 
   // 활성화된 pdf 따라 GPT API 호출
-  useEffect(() => {
-    if (!activeSrc || activeDoc?.type !== "pdf") {
-      setRiskySentences([]);
-      return;
-    }
+  // 캐싱 기반 GPT 호출
+// 활성화된 pdf 따라 GPT API 호출 (캐시 사용)
+useEffect(() => {
+  if (!activeSrc || activeDoc?.type !== "pdf" || activeId == null) {
+    setRiskySentences([]);
+    return;
+  }
 
-    let cancelled = false;
+  // 🔹 1) store에서 getItem 직접 꺼내기 (hook 아님, 무한루프 방지)
+  const { getItem } = useRiskStore.getState();
 
-    const run = async () => {
-      try {
-        const item = await extractRisksForUrl(activeSrc);
-        if (!cancelled) {
-          setRiskySentences(item?.risky_sentences ?? []);
-          if (item && activeId != null) {
-            setRiskItem(activeId, item);
-          }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          console.error("extractRisksForUrl error", e);
-          setRiskySentences([]);
-        }
+  // 🔹 2) 이미 캐시가 있으면 GPT 호출 안 하고 그대로 사용
+  const cached = getItem(activeId);
+  if (cached) {
+    setRiskySentences(cached.risky_sentences ?? []);
+    return;
+  }
+
+  // 🔹 3) 없을 때만 GPT 호출
+  let cancelled = false;
+
+  const run = async () => {
+    try {
+      const item = await extractRisksForUrl(activeSrc);
+      if (!cancelled && item) {
+        setRiskySentences(item.risky_sentences ?? []);
+        setRiskItem(activeId, item); // 전역 store에 저장
       }
-    };
+    } catch (e) {
+      if (!cancelled) {
+        console.error("extractRisksForUrl error", e);
+        setRiskySentences([]);
+      }
+    }
+  };
 
-    void run();
+  void run();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSrc, activeDoc?.type, activeId, setRiskItem]);
+  return () => {
+    cancelled = true;
+  };
+}, [activeSrc, activeDoc?.type, activeId, setRiskItem]);
+
+
 
   // PdfViewer에 넘겨 줄 좌표 기반 하이라이트 정보
   const pdfHighlights = useMemo(
