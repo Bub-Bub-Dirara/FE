@@ -55,7 +55,6 @@ type CaseItem = {
   summary?: string;
 };
 
-// /ai/laws/search 응답을 LawWithArticles[] 로 변환
 function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
   const grouped: Record<string, LawWithArticles> = {};
 
