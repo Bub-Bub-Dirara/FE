@@ -9,7 +9,6 @@ import type { FileRecord } from "../types/file";
 
 import { useUploadStore } from "../stores/useUploadStore";
 import { useRiskStore } from "../stores/useRiskStore";
-
 import { getDownloadUrl, resolveViewUrl } from "../lib/files";
 
 import type { LawWithArticles } from "../types/law";
@@ -41,6 +40,7 @@ import {
 } from "@react-pdf/renderer";
 
 import ScenarioLoadingScreen from "../components/loading/ScenarioLoadingScreen";
+import type { ChatThread } from "../types/chat";
 
 // 한글 폰트 등록 (public/fonts/Pretendard-Regular.ttf 기준)
 Font.register({
@@ -663,27 +663,71 @@ export default function MappingPage() {
     }
 
     try {
+      // 1) PDF blob 생성
       const blob = await pdf(
         <MappingReportDocument data={reportData} />,
       ).toBlob();
 
       const safeName =
         reportData.fileName.replace(/\.[^/.]+$/, "") || "report";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${safeName}_리포트.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const downloadName = `${safeName}_리포트.pdf`;
+
+      // 2) 브라우저로 즉시 다운로드
+      {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      // 3) /be/api/files 로 업로드해서 파일 레코드 생성
+      try {
+        const form = new FormData();
+        form.append("file", blob, downloadName);
+        form.append("category", "report");
+
+        const fileRes = await http.post<FileRecord>(
+          "/be/api/files",
+          form,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          },
+        );
+
+        const savedFile = fileRes.data;
+
+        // 4) 로그인 유저 id 조회
+        const me = await http.get<{ id: number; email: string }>(
+          "/be/auth/me",
+        );
+        const userId = me.data.id;
+
+        // 5) /be/chat/threads 로 스레드 생성
+        await http.post<ChatThread>("/be/chat/threads", {
+          user_id: userId,
+          channel: "PREVENTION",
+          title: downloadName,
+          report_file_id: savedFile.id,
+        });
+
+      } catch (e) {
+        console.error("리포트 업로드 / 스레드 생성 실패", e);
+        alert(
+          "리포트를 서버에 저장하는 과정에서 오류가 발생했습니다. (다운로드는 정상 완료됨)",
+        );
+      }
     } catch (e) {
       console.error("PDF 생성 중 오류", e);
       alert("PDF 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
   };
 
-  // 🔹 로딩 상태 계산: 문서/URL 준비 + 전체 analyzeEvidence 완료까지
   const hasUploaded = !!uploaded && uploaded.length > 0;
   const hasDocs = docs.length > 0;
   const hasSrcMap = Object.keys(srcMap).length > 0;
