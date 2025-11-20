@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { http } from "../lib/http";
 import type { ChatThread, ChatThreadsResponse } from "../types/chat";
 import { TrashIcon } from "@heroicons/react/24/outline";
-import { getDownloadUrl } from "../lib/files";
 
 type ChannelTab = "pre" | "post";
 type ChatChannel = ChatThread["channel"];
@@ -122,7 +121,6 @@ export default function SideDrawer({
     [tab, threads],
   );
 
-  // 🔒 map 호출 전 방어용 배열
   const items: ChatThread[] = Array.isArray(itemsRaw) ? itemsRaw : [];
 
   const emptyMessage =
@@ -139,22 +137,47 @@ export default function SideDrawer({
   };
   // PDF 다운로드
   const handleDownload = async (thread: ChatThread) => {
-  try {
-    const url = await getDownloadUrl(thread.report_file_id); 
+    if (!thread.report_file_id) {
+      alert("연결된 리포트 파일이 없습니다.");
+      return;
+    }
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = thread.title?.endsWith(".pdf")
-      ? thread.title
-      : `${thread.title}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch (e) {
-    console.error(e);
-    alert("리포트 다운로드에 실패했습니다.");
-  }
-};
+    try {
+      // 1) presigned URL 가져오기
+      const { data } = await http.get<string | { url: string }>(
+        `/be/api/files/${thread.report_file_id}/download-url`,
+      );
+      const presignedUrl = typeof data === "string" ? data : data.url;
+
+      // 2) presigned URL로 실제 PDF 데이터를 받아와서 Blob으로 만들기
+      const res = await fetch(presignedUrl);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch pdf: ${res.status}`);
+      }
+      const blob = await res.blob();
+
+      // 3) Blob → object URL 만들어서 강제로 다운로드
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      const safeTitle =
+        (thread.title && thread.title.trim()) || "report";
+      a.href = objectUrl;
+      a.download = safeTitle.endsWith(".pdf")
+        ? safeTitle
+        : `${safeTitle}.pdf`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error("report download failed", err);
+      alert("리포트 다운로드에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+  };
+
+
   return (
     <div
       className={`fixed inset-y-0 z-[60] transition-opacity ${

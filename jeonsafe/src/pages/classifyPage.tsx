@@ -14,7 +14,6 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 import { ArrowsUpDownIcon } from "@heroicons/react/24/outline";
 
-
 import NextStepButton from "../components/NextStepButton";
 import BucketSection from "../components/classify/BucketSection";
 import {
@@ -31,6 +30,7 @@ import {
   type AnalyzeItem,
   type RatingLabel,
 } from "../lib/analyzeEvidence";
+import AnalysisLoadingScreen from "../components/loading/AnalysisLoadingScreen";
 
 export default function ClassifyPage() {
   const { setPos } = useProgress();
@@ -38,12 +38,25 @@ export default function ClassifyPage() {
     setPos("post", 1);
   }, [setPos]);
 
-  // CollectPage에서 저장한 업로드 결과
+  // 업로드 / 분석 스토어
   const uploaded = useUploadStore((s) => s.uploaded);
   const storeAnalysisById = useUploadStore((s) => s.analysisById);
   const setAnalysisByIdStore = useUploadStore((s) => s.setAnalysisById);
-  
-  
+
+  // 현재 업로드된 파일 id 리스트
+  const fileIds = useMemo(
+    () => (uploaded ?? []).map((f) => String(f.id)),
+    [uploaded],
+  );
+
+  // 스토어에 이 파일들 분석 결과가 모두 있는지 여부
+  const hasAllFromStore = useMemo(
+    () =>
+      fileIds.length > 0 &&
+      fileIds.every((id) => !!storeAnalysisById[id]),
+    [fileIds, storeAnalysisById],
+  );
+
   // 빈 버킷 템플릿
   const emptyBuckets: Buckets = useMemo(
     () => ({
@@ -64,23 +77,23 @@ export default function ClassifyPage() {
   const [analysisById, setAnalysisById] = useState<Record<string, AnalyzeItem>>(
     {},
   );
-  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  // 분석 중 여부 (처음 진입 시에도 바로 true로 잡아서 깜빡임 방지)
+  const [loadingAnalysis, setLoadingAnalysis] = useState<boolean>(
+    () => !!uploaded?.length && !hasAllFromStore,
+  );
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  // 🔹 실제 버킷 세팅 / 분석 실행
   useEffect(() => {
     if (!uploaded || uploaded.length === 0) {
       setBuckets(emptyBuckets);
       setAnalysisById({});
       setAnalysisByIdStore({});
+      setLoadingAnalysis(false);
       return;
     }
 
-    // 현재 업로드된 파일 id 리스트
-    const fileIds = uploaded.map((f) => String(f.id));
-
-    // 스토어에 이 파일들 분석 결과가 모두 있는지 확인
-    const hasAllFromStore = fileIds.every((id) => !!storeAnalysisById[id]);
-    
     // 공통: 분석 결과로 버킷 구성하는 helper
     const buildBucketsFromAnalysis = (
       analysisMap: Record<string, AnalyzeItem>,
@@ -114,23 +127,25 @@ export default function ClassifyPage() {
       setBuckets(nextBuckets);
     };
 
-    // 이미 분석 결과가 있으면: API 안 부르고 그걸로 세팅
+    // 1) 이미 스토어에 다 있으면 → API 호출 없이 바로 세팅
     if (hasAllFromStore) {
       setAnalysisById(storeAnalysisById);
       buildBucketsFromAnalysis(storeAnalysisById);
+      setLoadingAnalysis(false);
       return;
     }
 
-    
+    // 2) 없으면 → GPT 분석 호출 후 버킷 세팅
+    let cancelled = false;
+
     const run = async () => {
       try {
         setLoadingAnalysis(true);
         setAnalysisError(null);
 
-        // 1) GPT 분석 호출
         const aiItems = await analyzeFilesWithGpt(uploaded);
+        if (cancelled) return;
 
-        // 2) 응답 기반으로 버킷 채우기
         const nextBuckets: Buckets = {
           contract: [],
           sms: [],
@@ -161,26 +176,31 @@ export default function ClassifyPage() {
 
         setBuckets(nextBuckets);
         setAnalysisById(nextAnalysis);
-        setAnalysisByIdStore(nextAnalysis); 
+        setAnalysisByIdStore(nextAnalysis);
       } catch (e) {
         console.error("analyze error", e);
         setAnalysisError("AI 분석에 실패해서, 일단 전부 ‘기타’에 넣어둘게요.");
 
-        // 실패 시: 원래처럼 모두 other 버킷에
         const others: Item[] = uploaded.map((r) => ({
           id: String(r.id),
           name: r.original_filename,
         }));
         setBuckets({ ...emptyBuckets, other: others });
         setAnalysisById({});
-        setAnalysisByIdStore({}); 
+        setAnalysisByIdStore({});
       } finally {
-        setLoadingAnalysis(false);
+        if (!cancelled) {
+          setLoadingAnalysis(false);
+        }
       }
     };
 
     void run();
-  }, [uploaded, emptyBuckets,storeAnalysisById, setAnalysisByIdStore]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uploaded, emptyBuckets, hasAllFromStore, storeAnalysisById, setAnalysisByIdStore]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
@@ -280,12 +300,19 @@ export default function ClassifyPage() {
   };
 
   const activeItem = getItemById(activeId);
-  
+
   const getRatingForId = (id: string): RatingLabel | undefined =>
     analysisById[id]?.rating.label;
 
   const getAnalysisForId = (id: string): AnalyzeItem | undefined =>
     analysisById[id];
+
+  // 🔹 업로드가 있고, 아직 분석 중이면 전체 로딩 화면만 보여주기
+  const showLoading = !!uploaded?.length && loadingAnalysis;
+
+  if (showLoading) {
+    return <AnalysisLoadingScreen />;
+  }
 
   return (
     <div className="min-h-dvh overflow-hidden bg-white">
@@ -301,11 +328,6 @@ export default function ClassifyPage() {
             아이콘(위/아래)으로 드래그해서 위치를 옮기고, 파일 이름을 클릭하면
             AI가 판단한 이유를 볼 수 있어요.
           </p>
-          {loadingAnalysis && (
-            <p className="mt-2 text-xs text-emerald-700">
-              업로드한 자료를 분석 중입니다...
-            </p>
-          )}
           {analysisError && (
             <p className="mt-1 text-xs text-rose-600">{analysisError}</p>
           )}

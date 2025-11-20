@@ -8,6 +8,8 @@ import NextStepButton from "../components/NextStepButton";
 import { uploadManyViaApi } from "../lib/uploader";
 import type { FileRecord } from "../types/file";
 import { useUploadStore } from "../stores/useUploadStore";
+import EvidenceLoadingScreen from "../components/loading/EvidenceLoadingScreen";
+import { useNavigate } from "react-router-dom";
 
 export default function CollectPage() {
   const { setPos } = useProgress();
@@ -24,7 +26,7 @@ export default function CollectPage() {
   }, [setPos]);
 
   const handlePickFile = () => fileInputRef.current?.click();
-
+  const navigate = useNavigate();
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const incoming = e.target.files ? Array.from(e.target.files) : [];
     if (incoming.length === 0) return;
@@ -47,24 +49,27 @@ export default function CollectPage() {
     if (files.length === 0) return false;
     setBusy(true);
     setProgress({});
-
     try {
       const uploaded: FileRecord[] = await uploadManyViaApi(
         files,
-        "other", // 👈 기타 카테고리로 업로드
+        "other",
         (name, pct) => setProgress((m) => ({ ...m, [name]: pct }))
       );
-
       setUploaded(uploaded);
+
+      navigate("/post/clasffify");
       return true;
     } catch (err) {
       console.error(err);
       alert("업로드 중 오류가 발생했습니다. (Network/Server)");
-      return false;
-    } finally {
       setBusy(false);
+      return false;
     }
   };
+  
+  if (busy) {
+    return <EvidenceLoadingScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -91,11 +96,12 @@ export default function CollectPage() {
 
       <NextStepButton
         to="/post/classify"
-        disabled={busy || files.length === 0}
-        label={busy ? "업로드 중..." : undefined}
+         label="다음 단계로"
+        disabled={files.length === 0}
         onBeforeNavigate={onBeforeNavigate}
       />
 
+      
     </div>
   );
 }

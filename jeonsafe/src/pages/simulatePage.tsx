@@ -14,9 +14,18 @@ import ReportButton from "../components/ReportButton";
 import { makePdfHighlightsFromExtractItem } from "../lib/pdfHighlights";
 import { useRiskStore } from "../stores/useRiskStore";
 import DocViewerPanel from "../components/viewers/DocViewerPanel";
-import { RelatedCasesSection, RelatedLawsSection } from "../components/RelatedSections";
+import {
+  RelatedCasesSection,
+  RelatedLawsSection,
+} from "../components/RelatedSections";
 import AISummarySection from "../components/AISummarySection";
-import type { AnalyzeItem } from "../lib/analyzeEvidence";
+import {
+  analyzeFilesWithGpt,
+  type AnalyzeItem,
+} from "../lib/analyzeEvidence";
+import ScenarioLoadingScreen from "../components/loading/ScenarioLoadingScreen";
+import type { FileRecord } from "../types/file";
+import type { ChatThread } from "../types/chat";
 
 // PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
 import {
@@ -266,7 +275,9 @@ function SimulateReportDocument({ data }: { data: SimulateReportData }) {
         {/* 관련 법령 조항 */}
         <View style={reportStyles.section}>
           <Text style={reportStyles.sectionTitle}>관련 법령 조항</Text>
-          {(!laws || laws.length === 0) && <Text>연동된 법령이 없습니다.</Text>}
+          {(!laws || laws.length === 0) && (
+            <Text>연동된 법령이 없습니다.</Text>
+          )}
           {laws?.map((law) => (
             <View key={law.lawId} style={reportStyles.lawGroup}>
               <View style={reportStyles.lawGroupHeader}>
@@ -291,7 +302,9 @@ function SimulateReportDocument({ data }: { data: SimulateReportData }) {
         {/* 관련 판례 */}
         <View style={reportStyles.section}>
           <Text style={reportStyles.sectionTitle}>관련 판례</Text>
-          {(!cases || cases.length === 0) && <Text>연동된 판례가 없습니다.</Text>}
+          {(!cases || cases.length === 0) && (
+            <Text>연동된 판례가 없습니다.</Text>
+          )}
           {cases?.map((c) => (
             <View key={c.id} style={reportStyles.caseItem}>
               <Text style={reportStyles.caseTitle}>{c.name}</Text>
@@ -314,12 +327,16 @@ export default function SimulatePage() {
 
   const uploaded = useUploadStore((s) => s.uploaded);
   const analysisById = useUploadStore((s) => s.analysisById);
+  const setAnalysisByIdStore = useUploadStore((s) => s.setAnalysisById);
 
   const [laws, setLaws] = useState<LawWithArticles[] | null>(null);
   const [lawErr, setLawErr] = useState<string | null>(null);
 
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
+
+  // 🔹 분석 로딩 상태 (mappingPage와 동일 컨셉)
+  const [analysisReady, setAnalysisReady] = useState(false);
 
   // 좌측 DocList 데이터 (업로드된 파일 목록) + 타입 구분
   const docs: Doc[] = useMemo(
@@ -366,7 +383,7 @@ export default function SimulatePage() {
 
   const activeDoc = docs.find((d) => d.id === activeDocId) ?? docs[0] ?? null;
 
-  // 🔹 presigned view URL 로딩
+  // 🔹 presigned view URL 로딩 (모든 파일 한 번에)
   useEffect(() => {
     (async () => {
       if (!uploaded || uploaded.length === 0) return;
@@ -393,7 +410,11 @@ export default function SimulatePage() {
             map[file.id] = url;
           }
         } catch (e) {
-          console.error("Failed to resolve view URL in SimulatePage:", file.id, e);
+          console.error(
+            "Failed to resolve view URL in SimulatePage:",
+            file.id,
+            e,
+          );
         }
       }
       setSrcMap(map);
@@ -404,8 +425,15 @@ export default function SimulatePage() {
   const activeSrc =
     activeDoc && activeDoc.id != null ? srcMap[activeDoc.id] ?? null : null;
 
-  const activeRisk = useRiskStore((s) =>
-    activeDoc && activeDoc.id != null ? s.items?.[activeDoc.id] ?? null : null,
+  // ✅ riskStore에서 전체 items 가져오고, activeDoc과 조합해서 activeRisk 계산
+  const riskItems = useRiskStore((s) => s.items);
+
+  const activeRisk = useMemo(
+    () =>
+      activeDoc && activeDoc.id != null
+        ? riskItems?.[activeDoc.id] ?? null
+        : null,
+    [activeDoc, riskItems],
   );
 
   const pdfHighlights = useMemo(
@@ -431,6 +459,50 @@ export default function SimulatePage() {
   useEffect(() => {
     setPageNumber(1);
   }, [activeDocId]);
+
+  // === GPT 분석 캐싱 (mappingPage와 동일한 패턴) ===
+  useEffect(() => {
+    if (!uploaded || uploaded.length === 0) {
+      setAnalysisReady(false);
+      return;
+    }
+
+    const fileIds = uploaded.map((f) => String(f.id));
+    const hasAllFromStore = fileIds.every((id) => !!analysisById[id]);
+
+    if (hasAllFromStore) {
+      setAnalysisReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const aiItems = await analyzeFilesWithGpt(uploaded as any);
+        if (cancelled) return;
+
+        const nextAnalysis: Record<string, AnalyzeItem> = {
+          ...analysisById,
+        };
+        uploaded.forEach((file, idx) => {
+          const id = String(file.id);
+          const ai = aiItems[idx];
+          if (ai) nextAnalysis[id] = ai;
+        });
+
+        setAnalysisByIdStore(nextAnalysis);
+      } catch (e) {
+        console.error("analyze error (SimulatePage)", e);
+      } finally {
+        if (!cancelled) setAnalysisReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uploaded, analysisById, setAnalysisByIdStore]);
 
   // === 검색용 쿼리 추출 ===
   const lawQuery = uploaded
@@ -483,14 +555,17 @@ export default function SimulatePage() {
 
     (async () => {
       try {
-        const { data } = await http.get<CasesSearchResponse>("/ai/cases/search", {
-          params: {
-            q: caseQuery,
-            k: 5,
-            with_summary: true,
-            with_body: false,
+        const { data } = await http.get<CasesSearchResponse>(
+          "/ai/cases/search",
+          {
+            params: {
+              q: caseQuery,
+              k: 5,
+              with_summary: true,
+              with_body: false,
+            },
           },
-        });
+        );
 
         const caseItems: CaseItem[] = data.items.map((item) => ({
           id: String(item.doc_id),
@@ -561,7 +636,8 @@ export default function SimulatePage() {
       },
       uploadedDoc: {
         fileName: baseName,
-        description: "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
+        description:
+          "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
       },
       laws: laws ?? [],
       cases: cases ?? [],
@@ -569,18 +645,25 @@ export default function SimulatePage() {
   }, [activeDoc, activeRisk, analysisById, laws, cases]);
 
   const left = (
-    <DocList
-      docs={docs}
-      activeId={activeDocId}
-      onSelect={setActiveDocId}
-    />
+    <DocList docs={docs} activeId={activeDocId} onSelect={setActiveDocId} />
   );
   const rightHeader = { title: "AI 분석 결과" };
 
   const isLawLoading = laws === null && !lawErr && !!lawQuery;
   const hasNoLawQuery = !lawQuery;
 
-  // ✅ ReportButton이 호출하는 PDF 생성 로직 (백엔드 호출 X)
+  // 🔹 전체 로딩 상태 (문서 + presigned URL + 분석)
+  const hasUploaded = !!uploaded && uploaded.length > 0;
+  const hasDocs = docs.length > 0;
+  const hasSrcMap = Object.keys(srcMap).length > 0;
+  const docsReady = hasUploaded && hasDocs && hasSrcMap;
+  const isLoading = !docsReady || !analysisReady;
+
+  if (isLoading) {
+    return <ScenarioLoadingScreen />;
+  }
+
+  // ✅ ReportButton이 호출하는 PDF 생성 + 서버 저장 + POST_CASE 스레드 생성
   const onGenerateReport = async (title?: string) => {
     if (!reportData) {
       alert(
@@ -590,21 +673,64 @@ export default function SimulatePage() {
     }
 
     try {
+      // 1) PDF Blob 생성
       const blob = await pdf(
         <SimulateReportDocument data={reportData} />,
       ).toBlob();
 
-      const baseName = reportData.fileName.replace(/\.[^/.]+$/, "") || "report";
-      const safeTitle = (title?.trim().length ? title.trim() : "") || baseName;
-      const url = URL.createObjectURL(blob);
+      const baseName =
+        reportData.fileName.replace(/\.[^/.]+$/, "") || "report";
+      const safeTitle =
+        (title?.trim().length ? title.trim() : "") || baseName;
+      const downloadName = `${safeTitle}_리포트.pdf`;
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${safeTitle}_리포트.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      // 2) 브라우저로 즉시 다운로드
+      {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      // 3) /be/api/files 로 업로드해서 파일 레코드 생성
+      try {
+        const form = new FormData();
+        form.append("file", blob, downloadName);
+        form.append("category", "report");
+
+        const fileRes = await http.post<FileRecord>("/be/api/files", form, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+
+        const savedFile = fileRes.data;
+
+        // 4) 현재 로그인 유저 id 조회
+        const me = await http.get<{ id: number; email: string }>(
+          "/be/auth/me",
+        );
+        const userId = me.data.id;
+
+        // 5) /be/chat/threads 에 POST_CASE 스레드 생성
+        await http.post<ChatThread>("/be/chat/threads", {
+          user_id: userId,
+          channel: "POST_CASE",
+          title: downloadName,
+          report_file_id: savedFile.id,
+        });
+
+        // (원하면 여기서 toast 띄우거나, SideDrawer 리프레시 트리거해도 됨)
+      } catch (e) {
+        console.error("리포트 업로드 / 스레드 생성 실패", e);
+        alert(
+          "리포트를 서버에 저장하는 과정에서 오류가 발생했습니다. (다운로드는 정상 완료됨)",
+        );
+      }
     } catch (e) {
       console.error("PDF 생성 중 오류", e);
       alert("PDF 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
@@ -618,7 +744,10 @@ export default function SimulatePage() {
           <TwoPaneViewer left={left} rightHeader={rightHeader}>
             <div className="space-y-6">
               {/* AI 분석 요약 */}
-              <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
+              <AISummarySection
+                activeDoc={activeDoc}
+                analysisById={analysisById}
+              />
 
               {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
               <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
@@ -663,10 +792,7 @@ export default function SimulatePage() {
                 isLawLoading={isLawLoading}
               />
 
-              <RelatedCasesSection
-                cases={cases}
-                caseErr={caseErr}
-              />
+              <RelatedCasesSection cases={cases} caseErr={caseErr} />
             </div>
           </TwoPaneViewer>
         </div>
@@ -675,7 +801,6 @@ export default function SimulatePage() {
       <ReportButton
         onGenerate={onGenerateReport}
         label="리포트 다운로드"
-        placeholder="리포트 제목을 입력해 주세요. (비워두면 파일명 기준)"
         disabled={docs.length === 0}
         requireTitle={false}
       />
