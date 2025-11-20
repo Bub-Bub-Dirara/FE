@@ -9,6 +9,7 @@ import NextStepButton from "../components/NextStepButton";
 import { uploadManyViaApi } from "../lib/uploader";
 import type { FileRecord } from "../types/file";
 import { useUploadStore } from "../stores/useUploadStore";
+import EvidenceLoadingScreen from "../components/loading/EvidenceLoadingScreen";
 
 export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -45,11 +46,14 @@ export default function UploadPage() {
     } catch (err) {
       console.error(err);
       alert("업로드 중 오류가 발생했습니다. (Network/Server)");
-      return false;
-    } finally {
       setBusy(false);
+      return false;
     }
   };
+
+  if (busy) {
+    return <EvidenceLoadingScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -84,8 +88,8 @@ export default function UploadPage() {
 
       <NextStepButton
         to="/pre/risk"
-        label={busy ? "업로드 중..." : "다음 단계로"}
-        disabled={busy || files.length === 0}
+        label="다음 단계로"
+        disabled={files.length === 0}
         onBeforeNavigate={onBeforeNavigate}
       />
     </div>

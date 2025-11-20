@@ -14,13 +14,14 @@ import { useRiskStore } from "../stores/useRiskStore";
 import {
   extractRisksForUrl,
   type RiskySentence,
+  type ExtractRisksItem,
 } from "../lib/extractRisks";
 import { makePdfHighlightsFromRiskySentences } from "../lib/pdfHighlights";
 import PdfPageNavigator from "../components/viewers/PdfPageNavigator";
 import DocViewerPanel from "../components/viewers/DocViewerPanel";
+import AnalysisLoadingScreen from "../components/loading/AnalysisLoadingScreen";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
-
 
 export default function RiskPage() {
   const { setPos } = useProgress();
@@ -45,12 +46,16 @@ export default function RiskPage() {
 
   const [numPages, setNumPages] = useState(1);
   const [pageNumber, setPageNumber] = useState(1);
-
   const [riskySentences, setRiskySentences] = useState<RiskySentence[]>([]);
+  const [analysisDone, setAnalysisDone] = useState(false); // 🔹 분석 작업 완료 여부
 
+  // 1) uploaded → docs / srcMap 세팅
   useEffect(() => {
     (async () => {
       if (!uploaded || uploaded.length === 0) return;
+
+      // 업로드 바뀔 때마다 분석 상태 초기화
+      setAnalysisDone(false);
 
       const toDoc = (r: FileRecord): Doc => {
         const isPdf = r.content_type === "application/pdf";
@@ -110,53 +115,78 @@ export default function RiskPage() {
     }
   };
 
-  // 활성화된 pdf 따라 GPT API 호출
-  // 캐싱 기반 GPT 호출
-// 활성화된 pdf 따라 GPT API 호출 (캐시 사용)
-useEffect(() => {
-  if (!activeSrc || activeDoc?.type !== "pdf" || activeId == null) {
-    setRiskySentences([]);
-    return;
-  }
+  // 2) 모든 문서에 대해 GPT 한 번씩 호출 → store에 캐싱
+  useEffect(() => {
+    if (!uploaded || uploaded.length === 0) return;
+    if (docs.length === 0) return;
+    if (Object.keys(srcMap).length === 0) return;
 
-  // 🔹 1) store에서 getItem 직접 꺼내기 (hook 아님, 무한루프 방지)
-  const { getItem } = useRiskStore.getState();
+    let cancelled = false;
 
-  // 🔹 2) 이미 캐시가 있으면 GPT 호출 안 하고 그대로 사용
-  const cached = getItem(activeId);
-  if (cached) {
-    setRiskySentences(cached.risky_sentences ?? []);
-    return;
-  }
+    const run = async () => {
+      const { getItem } = useRiskStore.getState();
 
-  // 🔹 3) 없을 때만 GPT 호출
-  let cancelled = false;
+      try {
+        const targetDocs = docs; // 필요하면 docs.filter(d => d.type === "pdf") 로 좁힐 수 있음
 
-  const run = async () => {
-    try {
-      const item = await extractRisksForUrl(activeSrc);
-      if (!cancelled && item) {
-        setRiskySentences(item.risky_sentences ?? []);
-        setRiskItem(activeId, item); // 전역 store에 저장
+        for (const d of targetDocs) {
+          if (cancelled) break;
+
+          const url = srcMap[d.id];
+          if (!url) continue; // URL 없는 문서는 그냥 분석 안 함
+
+          const existing = getItem(d.id);
+          if (existing) continue; // 이미 캐싱된 문서는 건너뜀
+
+          try {
+            const item = await extractRisksForUrl(url);
+
+            const finalItem: ExtractRisksItem = item ?? {
+              fileurl: url,
+              risky_sentences: [],
+            };
+
+            if (!cancelled) {
+              setRiskItem(d.id, finalItem);
+            }
+          } catch (e) {
+            console.error("extractRisksForUrl error for doc", d.id, e);
+            if (!cancelled) {
+              const fallback: ExtractRisksItem = {
+                fileurl: url,
+                risky_sentences: [],
+              };
+              setRiskItem(d.id, fallback);
+            }
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setAnalysisDone(true); // 🔹 루프가 어떻게 끝났든 "분석 단계는 끝남"
+        }
       }
-    } catch (e) {
-      if (!cancelled) {
-        console.error("extractRisksForUrl error", e);
-        setRiskySentences([]);
-      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uploaded, docs, srcMap, setRiskItem]);
+
+  // 3) 활성 문서 기준으로 캐시에서 risky_sentences 꺼내기
+  useEffect(() => {
+    if (activeId == null) {
+      setRiskySentences([]);
+      return;
     }
-  };
 
-  void run();
+    const { getItem } = useRiskStore.getState();
+    const cached = getItem(activeId);
+    setRiskySentences(cached?.risky_sentences ?? []);
+  }, [activeId,analysisDone]);
 
-  return () => {
-    cancelled = true;
-  };
-}, [activeSrc, activeDoc?.type, activeId, setRiskItem]);
-
-
-
-  // PdfViewer에 넘겨 줄 좌표 기반 하이라이트 정보
+  // 4) 하이라이트 계산 (hook)
   const pdfHighlights = useMemo(
     () => makePdfHighlightsFromRiskySentences(riskySentences),
     [riskySentences],
@@ -187,27 +217,39 @@ useEffect(() => {
       />
     ) : null;
 
+  // 5) 로딩 상태 계산: 업로드 + docs + srcMap + 분석 단계 완료 여부
+  const hasUploaded = !!uploaded && uploaded.length > 0;
+  const hasDocs = docs.length > 0;
+  const hasSrcMap = Object.keys(srcMap).length > 0;
+  const docsReady = hasUploaded && hasDocs && hasSrcMap;
+
+  const isLoading = !docsReady || !analysisDone;
+
+  if (isLoading) {
+    return <AnalysisLoadingScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <main className="flex-1">
         <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
           <TwoPaneViewer
-          left={left}
-          rightHeader={rightHeader}
-          rightFooter={rightFooter}
-        >
-          <DocViewerPanel
-            variant="risk"
-            activeDoc={activeDoc}
-            activeSrc={activeSrc}
-            pageNumber={pageNumber}
-            numPages={numPages}
-            onChangePage={setPageNumber}
-            onPdfLoad={setNumPages}
-            onPdfError={handlePdfLoadError}
-            highlights={pdfHighlights}
-          />
-        </TwoPaneViewer>
+            left={left}
+            rightHeader={rightHeader}
+            rightFooter={rightFooter}
+          >
+            <DocViewerPanel
+              variant="risk"
+              activeDoc={activeDoc}
+              activeSrc={activeSrc}
+              pageNumber={pageNumber}
+              numPages={numPages}
+              onChangePage={setPageNumber}
+              onPdfLoad={setNumPages}
+              onPdfError={handlePdfLoadError}
+              highlights={pdfHighlights}
+            />
+          </TwoPaneViewer>
         </div>
       </main>
 

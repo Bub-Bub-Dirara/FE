@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 import TwoPaneViewer from "../components/TwoPaneViewer";
@@ -6,11 +7,16 @@ import DocList from "../components/DocList";
 import type { Doc } from "../types/doc";
 import type { FileRecord } from "../types/file";
 
+// 업로드 파일 & GPT 위험결과 스토어
 import { useUploadStore } from "../stores/useUploadStore";
 import { useRiskStore } from "../stores/useRiskStore";
 
+// PDF 뷰어 + presigned URL
 import { getDownloadUrl, resolveViewUrl } from "../lib/files";
+import { pdfjs } from "react-pdf";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
+// 법령/판례 검색용 타입 & API
 import type { LawWithArticles } from "../types/law";
 import { http } from "../lib/http";
 import { makePdfHighlightsFromExtractItem } from "../lib/pdfHighlights";
@@ -20,39 +26,24 @@ import {
   RelatedLawsSection,
 } from "../components/RelatedSections";
 import AISummarySection from "../components/AISummarySection";
-import type { RiskySentence } from "../lib/extractRisks";
 
-// GPT 분석 호출 유틸 (GET /be/api/files/{id}/download-url → POST /ai/gpt/analyze)
-import {
-  analyzeFilesWithGpt,
-  type AnalyzeItem,
-} from "../lib/analyzeEvidence";
+import ScenarioLoadingScreen from "../components/loading/ScenarioLoadingScreen";
+import { analyzeFilesWithGpt, type AnalyzeItem } from "../lib/analyzeEvidence";
 
-// PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
-import {
-  pdf,
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Font,
-} from "@react-pdf/renderer";
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-// 한글 폰트 등록 (public/fonts/Pretendard-Regular.ttf 기준)
-Font.register({
-  family: "Pretendard",
-  src: "/fonts/Pretendard-Regular.ttf",
-  fontWeight: "normal",
-});
+/** 좌측: 위험조항 리스트용 (일단 기존 mock 그대로 유지) */
+type Risk = { id: string; title: string; preview: string };
 
+// ====== 법령/판례 검색 응답 타입 ======
 type LawApiItem = {
+  rank: number;
+  score: number;
   law_name: string;
   article_no: string;
   snippet: string;
-  article_id: number;
-  score: number;
 };
+
 type LawsSearchResponse = {
   query: string;
   count: number;
@@ -66,6 +57,7 @@ type RawCaseApiItem = {
   선고일자: string;
   본문요약?: string;
 };
+
 type CasesSearchResponse = {
   query: string;
   count: number;
@@ -80,7 +72,7 @@ type CaseItem = {
   summary?: string;
 };
 
-// /ai/laws/search 응답 → LawWithArticles[]
+// /ai/laws/search 응답을 LawWithArticles[] 로 변환
 function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
   const grouped: Record<string, LawWithArticles> = {};
 
@@ -92,7 +84,7 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
         lawId: lawName,
         lawName,
         articles: [],
-      } as any;
+      } as unknown as LawWithArticles;
     }
 
     const law = grouped[lawName];
@@ -109,241 +101,39 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
       text: item.snippet,
     } as any;
 
-    law.articles.push(article);
+    (law.articles as any[]).push(article);
   });
 
   return Object.values(grouped);
 }
 
-// ✅ 리포트에 담을 데이터 구조
-type MappingReportData = {
-  fileName: string;
-  aiSummary: {
-    riskLabel?: string;
-    fileDisplayName?: string;
-    lawAnalysis?: string;
-    caseAnalysis?: string;
-    bullets: string[];
-  };
-  uploadedDoc: {
-    fileName: string;
-    description?: string;
-  };
-  laws: LawWithArticles[];
-  cases: CaseItem[];
-};
-
-// PDF 스타일 정의 (기본 폰트 Pretendard)
-const reportStyles = StyleSheet.create({
-  page: {
-    padding: 24,
-    fontSize: 11,
-    lineHeight: 1.4,
-    fontFamily: "Pretendard",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 12,
-  },
-  section: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    marginBottom: 6,
-  },
-  labelRow: {
-    flexDirection: "row",
-    marginBottom: 4,
-  },
-  label: {
-    fontWeight: "bold",
-    marginRight: 4,
-  },
-  bulletList: {
-    marginTop: 4,
-    marginLeft: 10,
-  },
-  bulletItem: {
-    flexDirection: "row",
-    marginBottom: 2,
-  },
-  bulletDot: {
-    width: 8,
-  },
-  bulletText: {
-    flex: 1,
-  },
-  lawGroup: {
-    marginBottom: 8,
-    paddingBottom: 4,
-    borderBottomWidth: 0.5,
-  },
-  lawGroupHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 2,
-  },
-  lawGroupTitle: {
-    fontWeight: "bold",
-  },
-  article: {
-    marginLeft: 8,
-    marginTop: 2,
-  },
-  articleTitle: {
-    fontWeight: "bold",
-  },
-  caseItem: {
-    marginBottom: 8,
-    paddingBottom: 4,
-    borderBottomWidth: 0.5,
-  },
-  caseTitle: {
-    fontWeight: "bold",
-    marginBottom: 2,
-  },
-  caseMeta: {
-    fontSize: 10,
-    marginBottom: 2,
-  },
-});
-
-// ✅ 실제 PDF 문서 컴포넌트
-function MappingReportDocument({ data }: { data: MappingReportData }) {
-  const { aiSummary, uploadedDoc, laws, cases } = data;
-
-  return (
-    <Document>
-      <Page size="A4" style={reportStyles.page}>
-        {/* 상단 제목/파일명 */}
-        <View style={reportStyles.section}>
-          <Text style={reportStyles.title}>법령·판례 조합 매핑 리포트</Text>
-          <Text>파일명: {data.fileName}</Text>
-        </View>
-
-        {/* AI 분석 요약 */}
-        <View style={reportStyles.section}>
-          <Text style={reportStyles.sectionTitle}>AI 분석 요약</Text>
-
-          {aiSummary.fileDisplayName && (
-            <Text>· {aiSummary.fileDisplayName}</Text>
-          )}
-
-          <View style={reportStyles.labelRow}>
-            <Text style={reportStyles.label}>위험도:</Text>
-            <Text>{aiSummary.riskLabel ?? "-"}</Text>
-          </View>
-
-          {aiSummary.lawAnalysis && (
-            <View style={{ marginBottom: 2 }}>
-              <Text style={reportStyles.label}>법령 관점 분석:</Text>
-              <Text>{aiSummary.lawAnalysis}</Text>
-            </View>
-          )}
-
-          {aiSummary.caseAnalysis && (
-            <View>
-              <Text style={reportStyles.label}>판례 관점 분석:</Text>
-              <Text>{aiSummary.caseAnalysis}</Text>
-            </View>
-          )}
-
-          {aiSummary.bullets.length > 0 && (
-            <View style={reportStyles.bulletList}>
-              {aiSummary.bullets.map((b, idx) => (
-                <View key={idx} style={reportStyles.bulletItem}>
-                  <Text style={reportStyles.bulletDot}>•</Text>
-                  <Text style={reportStyles.bulletText}>{b}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* 업로드 문서 */}
-        <View style={reportStyles.section}>
-          <Text style={reportStyles.sectionTitle}>업로드 문서</Text>
-          <Text>{uploadedDoc.fileName}</Text>
-          {uploadedDoc.description && <Text>{uploadedDoc.description}</Text>}
-        </View>
-
-        {/* 관련 법령 조항 */}
-        <View style={reportStyles.section}>
-          <Text style={reportStyles.sectionTitle}>관련 법령 조항</Text>
-          {(!laws || laws.length === 0) && (
-            <Text>연동된 법령이 없습니다.</Text>
-          )}
-          {laws?.map((law) => (
-            <View key={law.lawId} style={reportStyles.lawGroup}>
-              <View style={reportStyles.lawGroupHeader}>
-                <Text style={reportStyles.lawGroupTitle}>{law.lawName}</Text>
-                {law.articles?.length ? (
-                  <Text>{law.articles.length}개 조항</Text>
-                ) : null}
-              </View>
-              {law.articles?.map((a: any) => (
-                <View
-                  key={a.key ?? `${a.title}-${a.number}`}
-                  style={reportStyles.article}
-                >
-                  <Text style={reportStyles.articleTitle}>{a.title}</Text>
-                  {a.text && <Text>{a.text}</Text>}
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
-
-        {/* 관련 판례 */}
-        <View style={reportStyles.section}>
-          <Text style={reportStyles.sectionTitle}>관련 판례</Text>
-          {(!cases || cases.length === 0) && (
-            <Text>연동된 판례가 없습니다.</Text>
-          )}
-          {cases?.map((c) => (
-            <View key={c.id} style={reportStyles.caseItem}>
-              <Text style={reportStyles.caseTitle}>{c.name}</Text>
-              {(c.court || c.date) && (
-                <Text style={reportStyles.caseMeta}>
-                  {c.court ?? ""} {c.date ? `· ${c.date}` : ""}
-                </Text>
-              )}
-              {c.summary && <Text>{c.summary}</Text>}
-            </View>
-          ))}
-        </View>
-      </Page>
-    </Document>
-  );
-}
-
 export default function MappingPage() {
   const { setPos } = useProgress();
   useEffect(() => {
-    // 사전대비 3단계 위치 표시
     setPos("pre", 2);
   }, [setPos]);
 
+  // 업로드 파일 & GPT 위험결과 가져오기
   const uploaded = useUploadStore((s) => s.uploaded);
   const analysisById = useUploadStore((s) => s.analysisById);
-  const setAnalysisByIdStore = useUploadStore((s) => s.setAnalysisById);
-
+  const setAnalysisById = useUploadStore((s) => s.setAnalysisById);
+  const [analysisReady, setAnalysisReady] = useState(false);
   const riskItems = useRiskStore((s) => s.items);
 
-  // ---------- ✅ 여기서 GPT 분석 호출해서 analysisById 채우기 ----------
+  // 업로드된 모든 파일에 대해 GPT 증거 분석(analyzeEvidence) 한 번씩 실행하여 캐싱
   useEffect(() => {
     if (!uploaded || uploaded.length === 0) {
-      setAnalysisByIdStore({});
+      setAnalysisById({});
+      setAnalysisReady(false);
       return;
     }
 
     const fileIds = uploaded.map((f) => String(f.id));
-    const hasAllFromStore = fileIds.every((id) => !!analysisById[id]);
+    const hasAll = fileIds.every((id) => !!analysisById[id]);
 
-    if (hasAllFromStore) {
+    // 이미 모든 파일 분석 결과가 있으면 추가 호출 없이 바로 ready
+    if (hasAll) {
+      setAnalysisReady(true);
       return;
     }
 
@@ -352,38 +142,47 @@ export default function MappingPage() {
     (async () => {
       try {
         const aiItems = await analyzeFilesWithGpt(uploaded as FileRecord[]);
-
         if (cancelled) return;
 
-        const nextAnalysis: Record<string, AnalyzeItem> = {};
+        const next: Record<string, AnalyzeItem> = { ...analysisById };
+
         uploaded.forEach((file, idx) => {
           const id = String(file.id);
           const ai = aiItems[idx];
-          if (ai) nextAnalysis[id] = ai;
+          if (ai) {
+            next[id] = ai;
+          }
         });
 
-        setAnalysisByIdStore(nextAnalysis);
+        setAnalysisById(next);
       } catch (e) {
-        console.error("analyze error (MappingPage)", e);
+        console.error("analyzeFilesWithGpt error (MappingPage):", e);
+      } finally {
+        if (!cancelled) {
+          setAnalysisReady(true);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [uploaded, analysisById, setAnalysisByIdStore]);
-  // -------------------------------------------------------------------
+  }, [uploaded, analysisById, setAnalysisById]);
 
-  // 좌측 DocList용 문서 목록
+  // 좌측: 위험조항(현재는 첫 항목 고정 사용)
+  const [risks] = useState<Risk[]>([]);
+  const active = risks[0];
+
+  // 업로드 파일 → Doc 형태로 변환
   const docs: Doc[] = useMemo(
     () =>
-      uploaded.length > 0
-        ? (uploaded as FileRecord[]).map((file, idx) => {
-            const isPdf = file.content_type === "application/pdf";
-            const isImg = file.content_type?.startsWith("image/");
+      uploaded && uploaded.length > 0
+        ? (uploaded as FileRecord[]).map((r, idx) => {
+            const isPdf = r.content_type === "application/pdf";
+            const isImg = r.content_type?.startsWith("image/");
             return {
-              id: file.id ?? idx + 1,
-              name: file.original_filename ?? `파일 ${idx + 1}`,
+              id: r.id ?? idx + 1,
+              name: r.original_filename ?? `파일 ${idx + 1}`,
               type: isPdf ? "pdf" : isImg ? "image" : "other",
             } as Doc;
           })
@@ -391,8 +190,8 @@ export default function MappingPage() {
     [uploaded],
   );
 
-  // 선택된 문서 id
-  const [activeDocId, setActiveDocId] = useState<number>(() => docs[0]?.id ?? 0);
+  // 현재 선택된 문서 id
+  const [activeDocId, setActiveDocId] = useState<number | null>(null);
 
   // 파일 id → presigned view URL
   const [srcMap, setSrcMap] = useState<Record<number, string>>({});
@@ -401,64 +200,77 @@ export default function MappingPage() {
   const [numPages, setNumPages] = useState(1);
   const [pageNumber, setPageNumber] = useState(1);
 
-  // 좌측 패널 (업로드 문서 리스트)
-  const left =
-    docs.length > 0 ? (
-      <DocList docs={docs} activeId={activeDocId} onSelect={setActiveDocId} />
-    ) : (
-      <div className="text-sm text-gray-400 px-2 py-4">
-        업로드된 문서가 없습니다.
-      </div>
-    );
+  // docs가 준비되면 첫 번째 문서를 자동 선택
+  useEffect(() => {
+    if (docs.length > 0 && activeDocId == null) {
+      setActiveDocId(docs[0].id);
+    }
+  }, [docs, activeDocId]);
 
-  const rightHeader = { title: "위험조항 매핑" };
-
-  const activeDoc: Doc | null =
-    docs.find((d) => d.id === activeDocId) ?? docs[0] ?? null;
-
-  // presigned view URL 미리 받아두기
+  // 업로드된 파일들에 대해 presigned view URL 생성
   useEffect(() => {
     (async () => {
       if (!uploaded || uploaded.length === 0) return;
 
       const map: Record<number, string> = {};
-      for (const file of uploaded as FileRecord[]) {
+      for (const r of uploaded as FileRecord[]) {
         try {
-          const url = await resolveViewUrl(file);
-          if (file.id != null) {
-            map[file.id] = url;
+          const raw = (await resolveViewUrl(r)) as unknown;
+          let url: string;
+          if (typeof raw === "string") {
+            url = raw;
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            "url" in (raw as Record<string, unknown>) &&
+            typeof (raw as { url: unknown }).url === "string"
+          ) {
+            url = (raw as { url: string }).url;
+          } else {
+            console.error("invalid download-url response:", raw);
+            continue;
           }
+
+          if (r.id != null) map[r.id] = url;
         } catch (e) {
-          console.error("Failed to resolve view URL in MappingPage:", e);
+          console.error("Failed to resolve URL (MappingPage):", e);
         }
       }
       setSrcMap(map);
     })();
   }, [uploaded]);
 
-  const activeSrc = useMemo(() => {
-    if (!activeDoc || activeDoc.id == null) return null;
-    return srcMap[activeDoc.id] ?? null;
-  }, [activeDoc, srcMap]);
-
-  // 현재 문서에 대한 위험 분석 결과
-  const activeRisk =
-    activeDoc && activeDoc.id != null ? riskItems?.[activeDoc.id] ?? null : null;
-
-  // law_input / case_input 배열 추출 (risky_sentences 기준)
-  const lawInputs = useMemo(
+  // 현재 문서
+  const activeDoc = useMemo(
     () =>
-      (activeRisk?.risky_sentences as RiskySentence[] | undefined)
-        ?.map((s) => s.law_input?.trim())
-        .filter((t): t is string => Boolean(t)) ?? [],
-    [activeRisk],
+      activeDocId == null
+        ? null
+        : docs.find((d) => d.id === activeDocId) ?? null,
+    [docs, activeDocId],
   );
 
+  // 현재 문서에 대한 뷰 URL
+  const activeSrc = useMemo(
+    () => (activeDoc ? srcMap[activeDoc.id] ?? null : null),
+    [activeDoc, srcMap],
+  );
+
+  // 현재 문서에 대한 GPT 위험 결과 (RiskPage에서 캐싱해둔 것)
+  const activeRisk = activeDoc ? (riskItems as any)[activeDoc.id] : undefined;
+
+  // law_input / case_input 배열 뽑기 (risky_sentences 전체에서)
+  const lawInputs = useMemo(
+    () =>
+      activeRisk?.risky_sentences
+        ?.map((s: any) => s.law_input?.trim())
+        .filter((t: string | undefined): t is string => Boolean(t)) ?? [],
+    [activeRisk],
+  );
   const caseInputs = useMemo(
     () =>
-      (activeRisk?.risky_sentences as RiskySentence[] | undefined)
-        ?.map((s) => s.case_input?.trim())
-        .filter((t): t is string => Boolean(t)) ?? [],
+      activeRisk?.risky_sentences
+        ?.map((s: any) => s.case_input?.trim())
+        .filter((t: string | undefined): t is string => Boolean(t)) ?? [],
     [activeRisk],
   );
 
@@ -470,25 +282,31 @@ export default function MappingPage() {
 
   const [docPanelOpen, setDocPanelOpen] = useState(true);
 
+  // 문서 변경 시 페이지 다시 1페이지로
+  useEffect(() => {
+    setPageNumber(1);
+  }, [activeDocId]);
+
+  // presigned URL 만료 시 다시 받기
   const handlePdfLoadError = async (err: unknown) => {
     console.warn("PDF Load Error (mapping):", err);
-    if (!activeDoc || activeDoc.id == null) return;
+    if (!activeDoc) return;
     try {
       const fresh = await getDownloadUrl(activeDoc.id);
-      setSrcMap((m) => ({ ...m, [activeDoc.id as number]: fresh }));
+      setSrcMap((m) => ({ ...m, [activeDoc.id]: fresh }));
     } catch (e) {
       console.error("Failed to refresh presigned URL (mapping)", e);
     }
   };
 
-  // 관련 법령 / 판례 상태
+  // ===== 관련 법령 / 판례 검색 상태 =====
   const [laws, setLaws] = useState<LawWithArticles[] | null>(null);
   const [lawErr, setLawErr] = useState<string | null>(null);
 
   const [cases, setCases] = useState<CaseItem[] | null>(null);
   const [caseErr, setCaseErr] = useState<string | null>(null);
 
-  // 관련 법령 검색: law_input 개수만큼 호출해서 합치기
+  // === 관련 법령 검색 (/ai/laws/search) – law_input 개수만큼 호출해서 모두 합치기 ===
   useEffect(() => {
     if (!lawInputs || lawInputs.length === 0) {
       setLaws([]);
@@ -498,24 +316,28 @@ export default function MappingPage() {
 
     (async () => {
       try {
+        // law_input 하나당 1번씩 호출
         const responses = await Promise.all(
-          lawInputs.map((q: string) =>
-            http
-              .get<LawsSearchResponse>("/ai/laws/search", {
-                params: {
-                  q,
-                  k: 5,
-                  min_score: 0.05,
-                },
-              })
-              .then((res: { data: LawsSearchResponse }) => res.data),
-          ),
-        );
+        lawInputs.map((q: string) =>
+          http
+            .get<LawsSearchResponse>("/ai/laws/search", {
+              params: {
+                q,
+                k: 5,
+                min_score: 0.05,
+              },
+            })
+            .then((res) => res.data),
+        ),
+      );
 
-        const mergedItems: LawApiItem[] = [];
-        responses.forEach((res) => {
-          if (Array.isArray(res.items)) mergedItems.push(...res.items);
-        });
+      const mergedItems: LawApiItem[] = [];
+      responses.forEach((res: LawsSearchResponse) => {
+        if (Array.isArray(res.items)) {
+          mergedItems.push(...res.items);
+        }
+      });
+
 
         const synthetic: LawsSearchResponse = {
           query: lawInputs.join(" | "),
@@ -528,13 +350,14 @@ export default function MappingPage() {
         setLawErr(null);
       } catch (e: unknown) {
         console.error("/ai/laws/search error (MappingPage):", e);
-        setLawErr(e instanceof Error ? e.message : String(e));
+        if (e instanceof Error) setLawErr(e.message);
+        else setLawErr(String(e));
         setLaws([]);
       }
     })();
   }, [lawInputs]);
 
-  // 관련 판례 검색: case_input 개수만큼 호출해서 합치기
+  // === 관련 판례 검색 (/ai/cases/search) – case_input 개수만큼 호출해서 모두 합치기 ===
   useEffect(() => {
     if (!caseInputs || caseInputs.length === 0) {
       setCases([]);
@@ -545,132 +368,80 @@ export default function MappingPage() {
     (async () => {
       try {
         const responses = await Promise.all(
-          caseInputs.map((q: string) =>
-            http
-              .get<CasesSearchResponse>("/ai/cases/search", {
-                params: {
-                  q,
-                  k: 5,
-                  with_summary: true,
-                  with_body: false,
-                },
-              })
-              .then((res: { data: CasesSearchResponse }) => res.data),
-          ),
-        );
+        caseInputs.map((q: string) =>
+          http
+            .get<CasesSearchResponse>("/ai/cases/search", {
+              params: {
+                q,
+                k: 5,
+                with_summary: true,
+                with_body: false,
+              },
+            })
+            .then((res) => res.data),
+        ),
+      );
 
-        const mergedCases: CaseItem[] = [];
-        responses.forEach((res: CasesSearchResponse, inputIdx: number) => {
-          res.items.forEach((item: RawCaseApiItem, rankIdx: number) => {
-            mergedCases.push({
-              id: `${item.doc_id}-${inputIdx}-${rankIdx}`,
-              name: item["사건명"],
-              court: item["법원명"],
-              date: item["선고일자"],
-              summary: item["본문요약"],
-            });
+      const mergedCases: CaseItem[] = [];
+      responses.forEach((res: CasesSearchResponse, inputIdx: number) => {
+        res.items.forEach((item: RawCaseApiItem, rankIdx: number) => {
+          mergedCases.push({
+            id: `${item.doc_id}-${inputIdx}-${rankIdx}`,
+            name: item["사건명"],
+            court: item["법원명"],
+            date: item["선고일자"],
+            summary: item["본문요약"],
           });
         });
+      });
+
 
         setCases(mergedCases);
         setCaseErr(null);
       } catch (e: unknown) {
         console.error("/ai/cases/search error (MappingPage):", e);
-        setCaseErr(e instanceof Error ? e.message : String(e));
+        if (e instanceof Error) setCaseErr(e.message);
+        else setCaseErr(String(e));
         setCases([]);
       }
     })();
   }, [caseInputs]);
 
-  // ✅ 리포트에 넣을 데이터 하나로 묶기
-  const reportData = useMemo<MappingReportData | null>(() => {
-    if (!activeDoc) return null;
-
-    const baseName = activeDoc.name ?? "계약서.pdf";
-
-    const analysis: AnalyzeItem | undefined =
-      activeDoc.id != null
-        ? (analysisById?.[String(activeDoc.id)] as AnalyzeItem | undefined)
-        : undefined;
-
-    const riskySentences: any[] =
-      ((activeRisk as any)?.risky_sentences as any[]) ?? [];
-
-    const bullets =
-      riskySentences
-        .map(
-          (s) =>
-            s.summary ??
-            s.description ??
-            s.reason ??
-            s.text ??
-            s.highlight_text ??
-            "",
-        )
-        .filter(
-          (t: string) => typeof t === "string" && t.trim().length > 0,
-        ) ?? [];
-
-    return {
-      fileName: baseName,
-      aiSummary: {
-        riskLabel:
-          (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
-        fileDisplayName:
-          (analysis as any)?.file_display_name ??
-          activeDoc.name ??
-          baseName,
-        lawAnalysis:
-          (analysis as any)?.law_view ??
-          (analysis as any)?.law_analysis ??
-          (activeRisk as any)?.law_view,
-        caseAnalysis:
-          (analysis as any)?.case_view ??
-          (analysis as any)?.case_analysis ??
-          (activeRisk as any)?.case_view,
-        bullets,
-      },
-      uploadedDoc: {
-        fileName: baseName,
-        description:
-          "업로드한 계약서를 확인하고 위험 조항과 매핑해 보세요.",
-      },
-      laws: laws ?? [],
-      cases: cases ?? [],
-    };
-  }, [activeDoc, activeRisk, analysisById, laws, cases]);
-
   const isLawLoading = laws === null && !lawErr && lawInputs.length > 0;
   const hasNoLawQuery = lawInputs.length === 0;
 
-  // ✅ ReportButton이 호출하는 PDF 생성 로직
+  // 🔹 로딩 상태: 업로드/문서/URL 준비 + 전체 analyzeEvidence 완료까지
+  const hasUploaded = !!uploaded && uploaded.length > 0;
+  const hasDocs = docs.length > 0;
+  const hasSrcMap = Object.keys(srcMap).length > 0;
+  const docsReady = hasUploaded && hasDocs && hasSrcMap;
+
+  const isLoading = !docsReady || !analysisReady;
+
+  if (isLoading) {
+    return <ScenarioLoadingScreen />;
+  }
+
+  /** 좌측 패널: 문서 리스트 */
+  const left =
+    docs.length > 0 ? (
+      <DocList
+        docs={docs}
+        activeId={activeDocId ?? -1}
+        onSelect={(id) => setActiveDocId(id)}
+      />
+    ) : (
+      <div className="text-sm text-gray-400 px-2 py-4">
+        업로드된 문서가 없습니다.
+      </div>
+    );
+
+  const rightHeader = { title: active?.title ?? "위험조항 매핑" };
+
+  // 리포트 생성은 일단 데모용 (원래 로직 유지)
   const onGenerateReport = async () => {
-    if (!reportData) {
-      alert(
-        "리포트에 포함할 데이터가 없습니다. 문서와 분석 내용을 먼저 확인해주세요.",
-      );
-      return;
-    }
-
-    try {
-      const blob = await pdf(
-        <MappingReportDocument data={reportData} />,
-      ).toBlob();
-
-      const safeName =
-        reportData.fileName.replace(/\.[^/.]+$/, "") || "report";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${safeName}_리포트.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("PDF 생성 중 오류", e);
-      alert("PDF 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
-    }
+    await new Promise((r) => setTimeout(r, 600));
+    alert("리포트가 생성되었습니다. (데모)");
   };
 
   return (
@@ -678,60 +449,55 @@ export default function MappingPage() {
       <main className="flex-1">
         <div className="w-full p-4 pb-24 overflow-hidden">
           <TwoPaneViewer left={left} rightHeader={rightHeader}>
-            <div className="space-y-6">
-              {/* AI 분석 요약 */}
-              <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
+            {/* 상단 AI 요약 (analysisById는 위에서 미리 캐싱해 둔 내용 사용) */}
+            <AISummarySection activeDoc={activeDoc} analysisById={analysisById} />
 
-              {/* 업로드 문서 미리보기 */}
-              <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
-                업로드 문서
-              </h2>
-              <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white mb-6">
-                <button
-                  type="button"
-                  onClick={() => setDocPanelOpen((v) => !v)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {activeDoc?.name ?? "문서를 선택하세요"}
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      업로드한 계약서를 확인하고 위험 조항과 매핑해 보세요.
-                    </p>
+            {/* 업로드 문서 뷰어 */}
+            <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
+              업로드 문서
+            </h2>
+            <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white mb-6">
+              <button
+                type="button"
+                onClick={() => setDocPanelOpen((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {activeDoc?.name}
                   </div>
-                  <span className="ml-4 text-[11px] text-gray-400">
-                    {docPanelOpen ? "접기" : "자세히"}
-                  </span>
-                </button>
+                </div>
+                <span className="ml-4 text-[11px] text-gray-400">
+                  {docPanelOpen ? "접기" : "자세히"}
+                </span>
+              </button>
 
-                {docPanelOpen && (
-                  <div className="border-t border-gray-200">
-                    <DocViewerPanel
-                      activeDoc={activeDoc}
-                      activeSrc={activeSrc}
-                      pageNumber={pageNumber}
-                      numPages={numPages}
-                      onChangePage={setPageNumber}
-                      onPdfLoad={setNumPages}
-                      onPdfError={handlePdfLoadError}
-                      highlights={pdfHighlights}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* 관련 법령 조항 */}
-              <RelatedLawsSection
-                laws={laws}
-                lawErr={lawErr}
-                hasNoLawQuery={hasNoLawQuery}
-                isLawLoading={isLawLoading}
-              />
-
-              {/* 관련 판례 조항 */}
-              <RelatedCasesSection cases={cases} caseErr={caseErr} />
+              {docPanelOpen && (
+                <div className="border-t border-gray-200">
+                  <DocViewerPanel
+                    activeDoc={activeDoc}
+                    activeSrc={activeSrc}
+                    pageNumber={pageNumber}
+                    numPages={numPages}
+                    onChangePage={setPageNumber}
+                    onPdfLoad={setNumPages}
+                    onPdfError={handlePdfLoadError}
+                    highlights={pdfHighlights}
+                  />
+                </div>
+              )}
             </div>
+
+            {/* 관련 법령 */}
+            <RelatedLawsSection
+              laws={laws}
+              lawErr={lawErr}
+              hasNoLawQuery={hasNoLawQuery}
+              isLawLoading={isLawLoading}
+            />
+
+            {/* 관련 판례 */}
+            <RelatedCasesSection cases={cases} caseErr={caseErr} />
           </TwoPaneViewer>
         </div>
       </main>
