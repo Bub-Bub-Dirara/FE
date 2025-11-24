@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Bars3Icon, XMarkIcon,UserCircleIcon  } from "@heroicons/react/24/outline";
 import AuthBubble from "./AuthBubble";
 import SideDrawer from "./SideDrawer";
@@ -16,13 +16,14 @@ const Navbar = () => {
   const { chatOpen, openChat, closeChat } = useUI(); 
 
   const navigate = useNavigate();
+  const location = useLocation();
   const handleMenuClick = () => {
     if (!isAuthed) {
       openChat();
       return;
     }
     setMenuOpen((v) => !v);
-};
+  };
 
   useEffect(() => {
     const flag = sessionStorage.getItem("openDrawerOnHome");
@@ -30,7 +31,7 @@ const Navbar = () => {
       setMenuOpen(true);
       sessionStorage.removeItem("openDrawerOnHome");
     }
-  }, []);
+  }, [location.pathname]);
 
   return (
     <div className="flex h-screen">
