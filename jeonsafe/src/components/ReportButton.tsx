@@ -8,30 +8,23 @@ type Props = {
   disabled?: boolean;
   label?: string;
   placeholder?: string;
-  onReset?: () => void;
+  onReset?: () => void; // ← 이걸 "기록 보러가기" 용도로 사용
 };
 
 export default function ReportButton({
   onGenerate,
   onReset,
-  // 아래 props들은 더 이상 사용하지 않지만,
-  // 기존 코드와의 호환을 위해 그대로 두었어요.
-  initialTitle = "",
-  requireTitle = true,
   disabled = false,
-  label = "리포트 다운로드",
-  placeholder = "리포트의 이름을 적어주세요.",
+  label = "리포트 저장",
 }: Props) {
   const [loading, setLoading] = useState(false);
 
-  // 이제 제목 입력이 없으므로 disabled는 외부 props + 로딩만 고려
   const finalDisabled = disabled || loading;
 
   const handleClick = async () => {
     if (finalDisabled) return;
     try {
       setLoading(true);
-      // 제목 입력이 없으므로 빈 문자열로 호출
       await onGenerate("");
     } finally {
       setLoading(false);
@@ -42,8 +35,8 @@ export default function ReportButton({
     <footer className="fixed bottom-0 w-full bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-t border-gray-200">
       <div className="mx-auto max-w-4xl px-6">
         <div className="flex flex-col items-center gap-2 py-6">
-          {/* 버튼만 */}
-          <div className="flex w-full max-w-2xl items-center justify-center">
+          {/* 메인 버튼 + 기록 보러가기 버튼 */}
+          <div className="flex w-full max-w-2xl items-center justify-center gap-3">
             <button
               onClick={handleClick}
               disabled={finalDisabled}
@@ -59,18 +52,17 @@ export default function ReportButton({
               <span className="whitespace-nowrap">{label}</span>
               {loading && <ArrowPathIcon className="h-5 w-5 animate-spin" />}
             </button>
-          </div>
 
-          {/* 처음부터 다시 하기 */}
-          {onReset && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="text-sm text-[#113F67] underline underline-offset-4 hover:opacity-80"
-            >
-              처음부터 다시 하기
-            </button>
-          )}
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="inline-flex items-center justify-center rounded-full border border-[#113F67] px-5 py-2 text-sm font-medium text-[#113F67] hover:bg-[#113F67]/5 transition-all"
+              >
+                기록 보러가기
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </footer>

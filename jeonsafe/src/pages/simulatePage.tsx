@@ -26,7 +26,7 @@ import {
 import ScenarioLoadingScreen from "../components/loading/ScenarioLoadingScreen";
 import type { FileRecord } from "../types/file";
 import type { ChatThread } from "../types/chat";
-
+import { useNavigate } from "react-router-dom";
 // PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
 import {
   pdf,
@@ -324,7 +324,7 @@ function SimulateReportDocument({ data }: { data: SimulateReportData }) {
 
 export default function SimulatePage() {
   const { setPos } = useProgress();
-
+  const navigate = useNavigate();
   const uploaded = useUploadStore((s) => s.uploaded);
   const analysisById = useUploadStore((s) => s.analysisById);
   const setAnalysisByIdStore = useUploadStore((s) => s.setAnalysisById);
@@ -663,7 +663,7 @@ export default function SimulatePage() {
     return <ScenarioLoadingScreen />;
   }
 
-  // ✅ ReportButton이 호출하는 PDF 생성 + 서버 저장 + POST_CASE 스레드 생성
+  // ReportButton이 호출하는 PDF 생성 + 서버 저장 + POST_CASE 스레드 생성
   const onGenerateReport = async (title?: string) => {
     if (!reportData) {
       alert(
@@ -737,6 +737,11 @@ export default function SimulatePage() {
     }
   };
 
+   const handleGoRecords = () => {
+    sessionStorage.setItem("openDrawerOnHome", "1");
+    navigate("/");
+  };
+
   return (
     <div className="min-h-dvh overflow-hidden bg-white">
       <main className="flex-1">
@@ -800,9 +805,10 @@ export default function SimulatePage() {
 
       <ReportButton
         onGenerate={onGenerateReport}
-        label="리포트 다운로드"
+        label="리포트 저장"
         disabled={docs.length === 0}
         requireTitle={false}
+        onReset={handleGoRecords}
       />
     </div>
   );

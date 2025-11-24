@@ -15,21 +15,21 @@ const POST_STEPS = [
 
 export default function NavbarStep() {
   const location = useLocation();
-  const navigate = useNavigate();
 
   const isPre = location.pathname.startsWith("/pre");
   const steps = isPre ? PRE_STEPS : POST_STEPS;
-  
-  const activeIndexRaw = steps.findIndex(s => location.pathname.startsWith(s.path));
+  const navigate = useNavigate();
+  const activeIndexRaw = steps.findIndex((s) =>
+    location.pathname.startsWith(s.path)
+  );
   const activeIndex = activeIndexRaw >= 0 ? activeIndexRaw : 0;
-
-  const nextAllowed = Math.min(activeIndex + 1, steps.length - 1);
 
   return (
     <div className="flex flex-row">
       {steps.map((s, idx) => {
-        const isDisabled = idx > nextAllowed;
         const used = idx < activeIndex;
+
+        const isClickable = idx === 0;
 
         return (
           <StepBox
@@ -37,9 +37,9 @@ export default function NavbarStep() {
             text={s.label}
             selected={activeIndex === idx}
             used={used}
-            disabled={isDisabled}
+            disabled={!isClickable}
             onClick={() => {
-              if (isDisabled) return;
+              if (!isClickable) return;
               navigate(s.path);
             }}
             className={idx === 0 ? "z-30" : idx === 1 ? "-ml-8 z-20" : "-ml-8 z-10"}

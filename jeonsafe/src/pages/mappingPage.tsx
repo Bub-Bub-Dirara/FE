@@ -21,6 +21,7 @@ import {
 } from "../components/RelatedSections";
 import AISummarySection from "../components/AISummarySection";
 import type { RiskySentence } from "../lib/extractRisks";
+import { useNavigate } from "react-router-dom";
 
 // GPT 분석 호출 유틸 (GET /be/api/files/{id}/download-url → POST /ai/gpt/analyze)
 import {
@@ -324,6 +325,7 @@ function MappingReportDocument({ data }: { data: MappingReportData }) {
 
 export default function MappingPage() {
   const { setPos } = useProgress();
+  const navigate = useNavigate();
   useEffect(() => {
     // 사전대비 3단계 위치 표시
     setPos("pre", 2);
@@ -728,6 +730,11 @@ export default function MappingPage() {
     }
   };
 
+  const handleGoRecords = () => {
+    sessionStorage.setItem("openDrawerOnHome", "1");
+    navigate("/");
+  };
+
   const hasUploaded = !!uploaded && uploaded.length > 0;
   const hasDocs = docs.length > 0;
   const hasSrcMap = Object.keys(srcMap).length > 0;
@@ -805,7 +812,11 @@ export default function MappingPage() {
         </div>
       </main>
 
-      <ReportButton onGenerate={onGenerateReport} />
+       <ReportButton
+        onGenerate={onGenerateReport}
+        onReset={handleGoRecords}
+        label="리포트 저장"
+      />
     </div>
   );
 }

@@ -19,7 +19,7 @@ const StepBox = ({ text, selected, used, disabled, onClick, className }: StepBox
         : "bg-[#EAEFF3] text-white"
 
     const state = disabled
-        ? "cursor-not-allowed opacity-60 pointer-events-none"
+        ? "cursor-not-allowed pointer-events-none"
         : "cursor-pointer";
 
     return (
