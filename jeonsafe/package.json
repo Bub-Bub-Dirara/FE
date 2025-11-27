@@ -1,0 +1,79 @@
+{
+  "name": "jeonsafe",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@heroicons/react": "^2.2.0",
+    "@react-pdf/renderer": "^4.3.1",
+    "@tailwindcss/vite": "^4.1.16",
+    "axios": "^1.13.2",
+    "pdfjs-dist": "^5.4.296",
+    "pdfmake": "^0.2.20",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-icons": "^5.5.0",
+    "react-pdf": "^10.2.0",
+    "react-router-dom": "^7.9.4",
+    "tailwindcss": "^4.1.16",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "eslint": "^9.25.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.30.1",
+    "vite": "^6.3.5"
+  },
+  "tailwind": {
+    "theme": {
+      "extend": {
+        "colors": {
+          "primary": {
+            "main": "#113F67",
+            "middle": "#34699A",
+            "light": "#58A0C8"
+          },
+          "secondary": {
+            "yellow_h": "#F3F65F80",
+            "green_h": "#5FF65F80",
+            "red_h": "#FB4D4D80",
+            "great_bg": "#C5DED8",
+            "great_txt": "#40AD73",
+            "iffy_bg": "#DEDDC5",
+            "iffy_txt": "#AD8E40",
+            "bad_bg": "#DEC5C5",
+            "bad_txt": "#8A3333"
+          },
+          "background": {
+            "default": "#EAEFF3",
+            "alt": "#E9ECEF"
+          },
+          "text": {
+            "main": "#1E1E1E",
+            "muted": "#A9A9A9",
+            "inverse": "#ffffff"
+          },
+          "black": {
+            "DEFAULT": "#000000"
+          }
+        }
+      }
+    }
+  }
+}
