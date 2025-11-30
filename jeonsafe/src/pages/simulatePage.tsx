@@ -7,13 +7,11 @@ import { http } from "../lib/http";
 import TwoPaneViewer from "../components/TwoPaneViewer";
 import DocList from "../components/DocList";
 import type { Doc } from "../types/doc";
-import { resolveViewUrl, getDownloadUrl } from "../lib/files";
+import { resolveViewUrl } from "../lib/files";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import ReportButton from "../components/ReportButton";
-import { makePdfHighlightsFromExtractItem } from "../lib/pdfHighlights";
 import { useRiskStore } from "../stores/useRiskStore";
-import DocViewerPanel from "../components/viewers/DocViewerPanel";
 import {
   RelatedCasesSection,
   RelatedLawsSection,
@@ -22,12 +20,12 @@ import AISummarySection from "../components/AISummarySection";
 import {
   analyzeFilesWithGpt,
   type AnalyzeItem,
+  type RatingLabel,
 } from "../lib/analyzeEvidence";
 import ScenarioLoadingScreen from "../components/loading/ScenarioLoadingScreen";
 import type { FileRecord } from "../types/file";
 import type { ChatThread } from "../types/chat";
 import { useNavigate } from "react-router-dom";
-// PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
 import { toKorRiskLabel } from "../lib/riskLabel";
 import {
   pdf,
@@ -216,7 +214,7 @@ const reportStyles = StyleSheet.create({
 
 // 실제 PDF 문서 컴포넌트 (simulate용)
 function SimulateReportDocument({ data }: { data: SimulateReportData }) {
-  const { aiSummary, uploadedDoc, laws, cases } = data;
+  const { aiSummary, laws, cases } = data;
 
   return (
     <Document>
@@ -264,13 +262,6 @@ function SimulateReportDocument({ data }: { data: SimulateReportData }) {
               ))}
             </View>
           )}
-        </View>
-
-        {/* 업로드 문서 */}
-        <View style={reportStyles.section}>
-          <Text style={reportStyles.sectionTitle}>업로드 문서</Text>
-          <Text>{uploadedDoc.fileName}</Text>
-          {uploadedDoc.description && <Text>{uploadedDoc.description}</Text>}
         </View>
 
         {/* 관련 법령 조항 */}
@@ -361,10 +352,6 @@ export default function SimulatePage() {
   // 🔹 파일 id -> presigned view URL
   const [srcMap, setSrcMap] = useState<Record<number, string>>({});
 
-  // 🔹 PDF 페이지 상태
-  const [numPages, setNumPages] = useState(1);
-  const [pageNumber, setPageNumber] = useState(1);
-
   // 단계 위치
   useEffect(() => {
     setPos("post", 2);
@@ -383,6 +370,26 @@ export default function SimulatePage() {
   }, [docs, activeDocId]);
 
   const activeDoc = docs.find((d) => d.id === activeDocId) ?? docs[0] ?? null;
+
+  // 현재 활성 문서의 분석 결과 / rating / 이유 / 색상 계산
+  const activeAnalysis: AnalyzeItem | undefined =
+    activeDoc?.id != null
+      ? (analysisById[String(activeDoc.id)] as AnalyzeItem | undefined)
+      : undefined;
+
+  const activeRating = activeAnalysis?.rating?.label as RatingLabel | undefined;
+  const activeRatingKor = toKorRiskLabel(activeRating);
+
+  const activeReasons = (activeAnalysis?.rating?.reasons ?? []) as string[];
+
+  const reasonCardClass =
+    activeRatingKor === "상"
+      ? "border-rose-200 bg-rose-50/80"
+      : activeRatingKor === "중"
+      ? "border-amber-200 bg-amber-50/80"
+      : activeRatingKor === "하"
+      ? "border-emerald-200 bg-emerald-50/80"
+      : "border-gray-200 bg-white";
 
   // 🔹 presigned view URL 로딩 (모든 파일 한 번에)
   useEffect(() => {
@@ -422,11 +429,6 @@ export default function SimulatePage() {
     })();
   }, [uploaded]);
 
-  // 🔹 현재 문서의 src
-  const activeSrc =
-    activeDoc && activeDoc.id != null ? srcMap[activeDoc.id] ?? null : null;
-
-  // ✅ riskStore에서 전체 items 가져오고, activeDoc과 조합해서 activeRisk 계산
   const riskItems = useRiskStore((s) => s.items);
 
   const activeRisk = useMemo(
@@ -436,30 +438,6 @@ export default function SimulatePage() {
         : null,
     [activeDoc, riskItems],
   );
-
-  const pdfHighlights = useMemo(
-    () => makePdfHighlightsFromExtractItem(activeRisk),
-    [activeRisk],
-  );
-
-  const [docPanelOpen, setDocPanelOpen] = useState(true);
-
-  // 🔹 PDF 로드 에러 시 presigned URL 재발급
-  const handlePdfLoadError = async (err: unknown) => {
-    console.warn("PDF Load Error (SimulatePage):", err);
-    if (!activeDoc || activeDoc.id == null) return;
-    try {
-      const fresh = await getDownloadUrl(activeDoc.id);
-      setSrcMap((m) => ({ ...m, [activeDoc.id]: fresh }));
-    } catch (e) {
-      console.error("Failed to refresh presigned URL in SimulatePage", e);
-    }
-  };
-
-  // 문서가 바뀌면 페이지 1로
-  useEffect(() => {
-    setPageNumber(1);
-  }, [activeDocId]);
 
   // === GPT 분석 캐싱 (mappingPage와 동일한 패턴) ===
   useEffect(() => {
@@ -593,10 +571,7 @@ export default function SimulatePage() {
 
     const baseName = activeDoc.name ?? "계약서.pdf";
 
-    const analysis: AnalyzeItem | undefined =
-      activeDoc.id != null
-        ? (analysisById?.[String(activeDoc.id)] as AnalyzeItem | undefined)
-        : undefined;
+    const analysis: AnalyzeItem | undefined = activeAnalysis;
 
     const riskySentences: any[] =
       ((activeRisk as any)?.risky_sentences as any[]) ?? [];
@@ -620,7 +595,7 @@ export default function SimulatePage() {
       fileName: baseName,
       aiSummary: {
         riskLabel: toKorRiskLabel(
-         (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
+          (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
         ),
         fileDisplayName:
           (analysis as any)?.file_display_name ??
@@ -644,7 +619,7 @@ export default function SimulatePage() {
       laws: laws ?? [],
       cases: cases ?? [],
     };
-  }, [activeDoc, activeRisk, analysisById, laws, cases]);
+  }, [activeDoc, activeRisk, activeAnalysis, laws, cases]);
 
   const left = (
     <DocList docs={docs} activeId={activeDocId} onSelect={setActiveDocId} />
@@ -739,7 +714,7 @@ export default function SimulatePage() {
     }
   };
 
-   const handleGoRecords = () => {
+  const handleGoRecords = () => {
     sessionStorage.setItem("openDrawerOnHome", "1");
     navigate("/");
   };
@@ -756,41 +731,35 @@ export default function SimulatePage() {
                 analysisById={analysisById}
               />
 
-              {/* 업로드 문서 미리보기 영역 (PDF/이미지 지원) */}
-              <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
-                업로드 문서
-              </h2>
-              <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white mb-6">
-                <button
-                  type="button"
-                  onClick={() => setDocPanelOpen((v) => !v)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {activeDoc?.name}
-                    </div>
-                  </div>
-                  <span className="ml-4 text-[11px] text-gray-400">
-                    {docPanelOpen ? "접기" : "자세히"}
-                  </span>
-                </button>
+              {activeReasons.length > 0 && (
+                <section className="w-full max-w-3xl mx-auto space-y-2 mb-6">
+                  <h2
+                    className={`text-xl font-bold mb-1 ml-3 ${
+                      activeRatingKor === "상"
+                        ? "text-rose-600"
+                        : activeRatingKor === "중"
+                        ? "text-yellow-500"
+                        : activeRatingKor === "하"
+                        ? "text-emerald-600"
+                        : "text-[#113F67]"
+                    }`}
+                  >
+                    위험도: {activeRatingKor ?? activeRating ?? "-"}
+                  </h2>
 
-                {docPanelOpen && (
-                  <div className="border-t border-gray-200">
-                    <DocViewerPanel
-                      activeDoc={activeDoc}
-                      activeSrc={activeSrc}
-                      pageNumber={pageNumber}
-                      numPages={numPages}
-                      onChangePage={setPageNumber}
-                      onPdfLoad={setNumPages}
-                      onPdfError={handlePdfLoadError}
-                      highlights={pdfHighlights}
-                    />
+                  <div
+                    className={`rounded-xl border p-4 shadow-sm ${reasonCardClass}`}
+                  >
+                    <ul className="mt-1 space-y-2 text-[13px] leading-relaxed text-gray-800 list-none pl-0">
+                      {activeReasons.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
                   </div>
-                )}
-              </div>
+                </section>
+              )}
+
+
 
               <RelatedLawsSection
                 laws={laws}

@@ -29,7 +29,15 @@ export default function AISummarySection({ activeDoc, analysisById }: Props) {
             const caseInput = analysis?.case_input;
             const ratingRaw = analysis?.rating?.label as string | undefined;
             const ratingKor = toKorRiskLabel(ratingRaw);
-            const reasons = (analysis?.rating?.reasons ?? []) as string[];
+            
+            const badgeClass =
+              ratingKor === "상"
+                ? "border border-rose-300 bg-rose-50 text-rose-700"
+                : ratingKor === "중"
+                ? "border border-yellow-300 bg-yellow-50 text-yellow-700"
+                : ratingKor === "하"
+                ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+                : "border border-gray-300 bg-gray-50 text-gray-600";
 
             return (
               <div
@@ -40,8 +48,11 @@ export default function AISummarySection({ activeDoc, analysisById }: Props) {
                   <div className="text-sm font-semibold text-gray-800">
                     {activeDoc.name}
                   </div>
+
                   {ratingKor && (
-                    <span className="inline-flex items-center rounded-full border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${badgeClass}`}
+                    >
                       위험도: {ratingKor}
                     </span>
                   )}
@@ -63,14 +74,6 @@ export default function AISummarySection({ activeDoc, analysisById }: Props) {
                     </span>
                     {caseInput}
                   </div>
-                )}
-
-                {reasons.length > 0 && (
-                  <ul className="mt-2 list-disc pl-5 text-[11px] text-gray-600">
-                    {reasons.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
                 )}
 
                 {!analysis && (

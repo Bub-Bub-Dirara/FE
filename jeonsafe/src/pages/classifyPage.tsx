@@ -31,7 +31,6 @@ import {
   type RatingLabel,
 } from "../lib/analyzeEvidence";
 import AnalysisLoadingScreen from "../components/loading/AnalysisLoadingScreen";
-import { toKorRiskLabel } from "../lib/riskLabel";
 export default function ClassifyPage() {
   const { setPos } = useProgress();
   useEffect(() => {
@@ -302,7 +301,7 @@ export default function ClassifyPage() {
   const activeItem = getItemById(activeId);
 
   const getRatingForId = (id: string): RatingLabel | undefined =>
-    toKorRiskLabel(analysisById[id]?.rating.label) as RatingLabel | undefined;
+    analysisById[id]?.rating.label as RatingLabel | undefined;
 
   const getAnalysisForId = (id: string): AnalyzeItem | undefined =>
     analysisById[id];
