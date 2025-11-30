@@ -10,7 +10,7 @@ const PRE_STEPS = [
 const POST_STEPS = [
   { label: "피해 증명 자료 수집", path: "/post/collect" },
   { label: "증거 자료 분류", path: "/post/classify" },
-  { label: "재판 시뮬레이션", path: "/post/simulate" },
+  { label: "법령·판례 조합 매핑", path: "/post/simulate" },
 ];
 
 export default function NavbarStep() {

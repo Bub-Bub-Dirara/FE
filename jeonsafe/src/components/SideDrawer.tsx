@@ -100,7 +100,7 @@ export default function SideDrawer({
         }));
       } catch (e) {
         console.error("failed to load chat threads", e);
-        setError("채팅 기록을 불러오는 데 실패했습니다.");
+        setError("리포트를 불러오는 데 실패했습니다.");
       } finally {
         setLoading(false);
       }
@@ -208,7 +208,7 @@ export default function SideDrawer({
                   : "text-gray-500"
               }`}
             >
-              사전대비 채팅기록
+              사전대비 리포트 기록
             </button>
             <button
               type="button"
@@ -219,7 +219,7 @@ export default function SideDrawer({
                   : "text-gray-500"
               }`}
             >
-              사후처리 채팅기록
+              사후처리 리포트 기록
             </button>
           </div>
         </div>

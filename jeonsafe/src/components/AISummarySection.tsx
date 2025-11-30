@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { Doc } from "../types/doc";
+import { toKorRiskLabel } from "../lib/riskLabel";
 
 type Props = {
   activeDoc: Doc | null;
@@ -26,7 +27,8 @@ export default function AISummarySection({ activeDoc, analysisById }: Props) {
 
             const lawInput = analysis?.law_input;
             const caseInput = analysis?.case_input;
-            const rating = analysis?.rating?.label as string | undefined;
+            const ratingRaw = analysis?.rating?.label as string | undefined;
+            const ratingKor = toKorRiskLabel(ratingRaw);
             const reasons = (analysis?.rating?.reasons ?? []) as string[];
 
             return (
@@ -38,9 +40,9 @@ export default function AISummarySection({ activeDoc, analysisById }: Props) {
                   <div className="text-sm font-semibold text-gray-800">
                     {activeDoc.name}
                   </div>
-                  {rating && (
+                  {ratingKor && (
                     <span className="inline-flex items-center rounded-full border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700">
-                      위험도: {rating}
+                      위험도: {ratingKor}
                     </span>
                   )}
                 </div>

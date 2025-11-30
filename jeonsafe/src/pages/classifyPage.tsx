@@ -31,7 +31,7 @@ import {
   type RatingLabel,
 } from "../lib/analyzeEvidence";
 import AnalysisLoadingScreen from "../components/loading/AnalysisLoadingScreen";
-
+import { toKorRiskLabel } from "../lib/riskLabel";
 export default function ClassifyPage() {
   const { setPos } = useProgress();
   useEffect(() => {
@@ -302,12 +302,12 @@ export default function ClassifyPage() {
   const activeItem = getItemById(activeId);
 
   const getRatingForId = (id: string): RatingLabel | undefined =>
-    analysisById[id]?.rating.label;
+    toKorRiskLabel(analysisById[id]?.rating.label) as RatingLabel | undefined;
 
   const getAnalysisForId = (id: string): AnalyzeItem | undefined =>
     analysisById[id];
 
-  // 🔹 업로드가 있고, 아직 분석 중이면 전체 로딩 화면만 보여주기
+  // 업로드가 있고, 아직 분석 중이면 전체 로딩 화면만 보여주기
   const showLoading = !!uploaded?.length && loadingAnalysis;
 
   if (showLoading) {

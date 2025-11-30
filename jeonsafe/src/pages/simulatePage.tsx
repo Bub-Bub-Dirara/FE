@@ -28,6 +28,7 @@ import type { FileRecord } from "../types/file";
 import type { ChatThread } from "../types/chat";
 import { useNavigate } from "react-router-dom";
 // PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
+import { toKorRiskLabel } from "../lib/riskLabel";
 import {
   pdf,
   Document,
@@ -117,7 +118,7 @@ function toLawWithArticles(data: LawsSearchResponse): LawWithArticles[] {
   return Object.values(grouped);
 }
 
-// ✅ 리포트에 담을 데이터 구조 (mappingPage와 동일 형식)
+//  리포트에 담을 데이터 구조 (mappingPage와 동일 형식)
 type SimulateReportData = {
   fileName: string;
   aiSummary: {
@@ -213,7 +214,7 @@ const reportStyles = StyleSheet.create({
   },
 });
 
-// ✅ 실제 PDF 문서 컴포넌트 (simulate용)
+// 실제 PDF 문서 컴포넌트 (simulate용)
 function SimulateReportDocument({ data }: { data: SimulateReportData }) {
   const { aiSummary, uploadedDoc, laws, cases } = data;
 
@@ -586,7 +587,7 @@ export default function SimulatePage() {
     })();
   }, [caseQuery]);
 
-  // ✅ 리포트에 넣을 데이터 하나로 묶기 (mappingPage와 동일 로직)
+  // 리포트에 넣을 데이터 하나로 묶기 (mappingPage와 동일 로직)
   const reportData = useMemo<SimulateReportData | null>(() => {
     if (!activeDoc) return null;
 
@@ -618,8 +619,9 @@ export default function SimulatePage() {
     return {
       fileName: baseName,
       aiSummary: {
-        riskLabel:
-          (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
+        riskLabel: toKorRiskLabel(
+         (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
+        ),
         fileDisplayName:
           (analysis as any)?.file_display_name ??
           activeDoc.name ??
@@ -807,7 +809,6 @@ export default function SimulatePage() {
         onGenerate={onGenerateReport}
         label="리포트 저장"
         disabled={docs.length === 0}
-        requireTitle={false}
         onReset={handleGoRecords}
       />
     </div>

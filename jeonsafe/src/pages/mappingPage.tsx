@@ -28,7 +28,7 @@ import {
   analyzeFilesWithGpt,
   type AnalyzeItem,
 } from "../lib/analyzeEvidence";
-
+import { toKorRiskLabel } from "../lib/riskLabel"; 
 // PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
 import {
   pdf,
@@ -626,8 +626,9 @@ export default function MappingPage() {
     return {
       fileName: baseName,
       aiSummary: {
-        riskLabel:
+        riskLabel: toKorRiskLabel(
           (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
+        ),
         fileDisplayName:
           (analysis as any)?.file_display_name ??
           activeDoc.name ??
