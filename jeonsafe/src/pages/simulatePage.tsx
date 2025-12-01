@@ -380,7 +380,10 @@ export default function SimulatePage() {
   const activeRating = activeAnalysis?.rating?.label as RatingLabel | undefined;
   const activeRatingKor = toKorRiskLabel(activeRating);
 
-  const activeReasons = (activeAnalysis?.rating?.reasons ?? []) as string[];
+  const activeReasons = useMemo(
+    () => (activeAnalysis?.rating?.reasons ?? []) as string[],
+    [activeAnalysis]
+  );
 
   const reasonCardClass =
     activeRatingKor === "상"
@@ -567,59 +570,58 @@ export default function SimulatePage() {
 
   // 리포트에 넣을 데이터 하나로 묶기 (mappingPage와 동일 로직)
   const reportData = useMemo<SimulateReportData | null>(() => {
-    if (!activeDoc) return null;
+  if (!activeDoc) return null;
 
-    const baseName = activeDoc.name ?? "계약서.pdf";
+  const baseName = activeDoc.name ?? "계약서.pdf";
+  const analysis: AnalyzeItem | undefined = activeAnalysis;
 
-    const analysis: AnalyzeItem | undefined = activeAnalysis;
+  // 화면에서 쓰는 위험도 / 이유 그대로 사용
+  const ratingLabelForReport =
+    activeRatingKor ??
+    toKorRiskLabel(
+      (analysis as any)?.risk_level ||
+        (activeRisk as any)?.risk_level,
+    ) ??
+    undefined;
 
-    const riskySentences: any[] =
-      ((activeRisk as any)?.risky_sentences as any[]) ?? [];
+  const bullets = activeReasons ?? [];
 
-    const bullets =
-      riskySentences
-        .map(
-          (s) =>
-            s.summary ??
-            s.description ??
-            s.reason ??
-            s.text ??
-            s.highlight_text ??
-            "",
-        )
-        .filter(
-          (t: string) => typeof t === "string" && t.trim().length > 0,
-        ) ?? [];
-
-    return {
+  return {
+    fileName: baseName,
+    aiSummary: {
+      riskLabel: ratingLabelForReport,
+      fileDisplayName:
+        (analysis as any)?.file_display_name ??
+        activeDoc.name ??
+        baseName,
+      lawAnalysis:
+        (analysis as any)?.law_view ??
+        (analysis as any)?.law_analysis ??
+        (activeRisk as any)?.law_view,
+      caseAnalysis:
+        (analysis as any)?.case_view ??
+        (analysis as any)?.case_analysis ??
+        (activeRisk as any)?.case_view,
+      bullets,
+    },
+    uploadedDoc: {
       fileName: baseName,
-      aiSummary: {
-        riskLabel: toKorRiskLabel(
-          (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
-        ),
-        fileDisplayName:
-          (analysis as any)?.file_display_name ??
-          activeDoc.name ??
-          baseName,
-        lawAnalysis:
-          (analysis as any)?.law_view ??
-          (analysis as any)?.law_analysis ??
-          (activeRisk as any)?.law_view,
-        caseAnalysis:
-          (analysis as any)?.case_view ??
-          (analysis as any)?.case_analysis ??
-          (activeRisk as any)?.case_view,
-        bullets,
-      },
-      uploadedDoc: {
-        fileName: baseName,
-        description:
-          "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
-      },
-      laws: laws ?? [],
-      cases: cases ?? [],
-    };
-  }, [activeDoc, activeRisk, activeAnalysis, laws, cases]);
+      description:
+        "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
+    },
+    laws: laws ?? [],
+    cases: cases ?? [],
+  };
+}, [
+  activeDoc,
+  activeRisk,
+  activeAnalysis,
+  laws,
+  cases,
+  activeRatingKor,
+  activeReasons,
+]);
+
 
   const left = (
     <DocList docs={docs} activeId={activeDocId} onSelect={setActiveDocId} />

@@ -8,15 +8,26 @@ interface StepBoxProps {
 }
 
 const StepBox = ({ text, selected, used, disabled, onClick, className }: StepBoxProps) => {
-    
     const base =
-    "flex items-center justify-center text-lg rounded-r-full w-140 h-10 drop-shadow-md mt-8 transition-colors";
+        "flex items-center justify-center text-lg rounded-r-full w-140 h-10 mt-8 transition-all";
+
+    const strongShadow = {
+        boxShadow:
+            "4px 0px 0px 0px rgba(62, 118, 164, 0.64), 4px 0px 0px 0px rgba(0,0,0,0.35)",
+    };
+
+    const weakShadow = {
+        boxShadow:
+            "2px 0px 0px 0px rgba(0,0,0,0.12), 2px 0px 0px 0px rgba(0,0,0,0.12)",
+    };
+
+    const shadowStyle = selected ? strongShadow : weakShadow;
 
     const tone = selected
         ? "bg-[#113F67] text-white"
         : used
         ? "bg-[#EAEFF3] text-[#34699A]"
-        : "bg-[#EAEFF3] text-white"
+        : "bg-[#EAEFF3] text-white";
 
     const state = disabled
         ? "cursor-not-allowed pointer-events-none"
@@ -28,10 +39,12 @@ const StepBox = ({ text, selected, used, disabled, onClick, className }: StepBox
             onClick={onClick}
             disabled={disabled}
             className={`${base} ${tone} ${state} ${className ?? ""}`}
-            >
-        {text}
+            style={shadowStyle}
+        >
+            {text}
         </button>
     );
-}
+};
+
 
 export default StepBox;

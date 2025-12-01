@@ -135,6 +135,12 @@ type MappingReportData = {
   };
   laws: LawWithArticles[];
   cases: CaseItem[];
+
+  riskySentences: {
+    sentence: string;
+    reason: string;
+    levelKor?: KorRiskLabel;
+  }[];
 };
 
 // PDF 스타일 정의 (기본 폰트 Pretendard)
@@ -267,11 +273,33 @@ function MappingReportDocument({ data }: { data: MappingReportData }) {
         </View>
 
         {/* 업로드 문서 (텍스트 정보만) */}
+                {/* 업로드 문서 (텍스트 정보만) */}
         <View style={reportStyles.section}>
           <Text style={reportStyles.sectionTitle}>업로드 문서</Text>
           <Text>{uploadedDoc.fileName}</Text>
           {uploadedDoc.description && <Text>{uploadedDoc.description}</Text>}
         </View>
+        
+        {data.riskySentences && data.riskySentences.length > 0 && (
+          <View style={reportStyles.section}>
+            <Text style={reportStyles.sectionTitle}>위험 문장 목록</Text>
+
+            {data.riskySentences.map((item, idx) => (
+              <View key={idx} style={{ marginBottom: 6 }}>
+                {/* 문장 + 위험도 */}
+                <Text>
+                  {item.levelKor ? `[${item.levelKor}] ` : ""}
+                  {item.sentence}
+                </Text>
+
+                {/* 이유 */}
+                {item.reason && (
+                  <Text> - {item.reason}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* 관련 법령 조항 */}
         <View style={reportStyles.section}>
@@ -426,42 +454,42 @@ export default function MappingPage() {
     activeDoc && activeDoc.id != null ? riskItems?.[activeDoc.id] ?? null : null;
 
   const riskySentenceItems = useMemo<
-  { sentence: string; reason: string; levelKor?: KorRiskLabel }[]
->(() => {
-  const sentences = (activeRisk?.risky_sentences as RiskySentence[]) ?? [];
-  const result: { sentence: string; reason: string; levelKor?: KorRiskLabel }[] =
-    [];
+    { sentence: string; reason: string; levelKor?: KorRiskLabel }[]
+  >(() => {
+    const sentences = (activeRisk?.risky_sentences as RiskySentence[]) ?? [];
+    const result: { sentence: string; reason: string; levelKor?: KorRiskLabel }[] =
+      [];
 
-  for (const s of sentences) {
-    const sentence =
-      (s as any).sentence ??
-      (s as any).highlight_text ??
-      (s as any).text ??
-      (s as any).summary ??
-      (s as any).description ??
-      "";
+    for (const s of sentences) {
+      const sentence =
+        (s as any).sentence ??
+        (s as any).highlight_text ??
+        (s as any).text ??
+        (s as any).summary ??
+        (s as any).description ??
+        "";
 
-    const reason =
-      (s as any).reason ??
-      (s as any).summary ??
-      (s as any).description ??
-      "";
+      const reason =
+        (s as any).reason ??
+        (s as any).summary ??
+        (s as any).description ??
+        "";
 
-    const levelRaw =
-      (s as any).level ??
-      (s as any).risk_level ??
-      (s as any).risk_label ??
-      undefined;
+      const levelRaw =
+        (s as any).level ??
+        (s as any).risk_level ??
+        (s as any).risk_label ??
+        undefined;
 
-    const levelKor = toKorRiskLabel(levelRaw) as KorRiskLabel | undefined;
+      const levelKor = toKorRiskLabel(levelRaw) as KorRiskLabel | undefined;
 
-    if (!sentence && !reason) continue;
+      if (!sentence && !reason) continue;
 
-    result.push({ sentence, reason, levelKor });
-  }
+      result.push({ sentence, reason, levelKor });
+    }
 
-  return result;
-}, [activeRisk]);
+    return result;
+  }, [activeRisk]);
 
   // law_input / case_input 배열 추출 (risky_sentences 기준)
   const lawInputs = useMemo(
@@ -582,6 +610,8 @@ export default function MappingPage() {
   }, [caseInputs]);
 
   // 리포트에 넣을 데이터 하나로 묶기
+
+    // 리포트에 넣을 데이터 하나로 묶기
   const reportData = useMemo<MappingReportData | null>(() => {
     if (!activeDoc) return null;
 
@@ -592,51 +622,70 @@ export default function MappingPage() {
         ? (analysisById?.[String(activeDoc.id)] as AnalyzeItem | undefined)
         : undefined;
 
-    const riskySentences: any[] =
-      ((activeRisk as any)?.risky_sentences as any[]) ?? [];
+    // 🔹 3단계 화면에서 쓰는 위험 문장 목록을 그대로 사용
+    const riskItemsForReport = riskySentenceItems ?? [];
 
+    // 🔹 요약 bullets는 "이유 → 없으면 문장" 으로 구성
     const bullets =
-      riskySentences
-        .map(
-          (s) =>
-            s.summary ??
-            s.description ??
-            s.reason ??
-            s.text ??
-            s.highlight_text ??
-            "",
-        )
-        .filter(
-          (t: string) => typeof t === "string" && t.trim().length > 0,
-        ) ?? [];
+      riskItemsForReport
+        .map((s) => s.reason || s.sentence || "")
+        .filter((t) => typeof t === "string" && t.trim().length > 0) ?? [];
 
-    return {
+    // 🔹 1순위: 분석 결과의 rating.label (M/G/B)
+    //    2순위: risk_level / risk_label
+    const rawFromAnalysis =
+      (analysis as any)?.rating?.label ??
+      (analysis as any)?.risk_level ??
+      (activeRisk as any)?.risk_level ??
+      (activeRisk as any)?.risk_label ??
+      undefined;
+
+    let docRiskLabel = toKorRiskLabel(rawFromAnalysis) as
+      | KorRiskLabel
+      | undefined;
+
+    // 🔹 그래도 없으면, 문장들 중 "가장 높은 위험도"를 위험도로 사용
+    if (!docRiskLabel && riskItemsForReport.length > 0) {
+      const order: Record<KorRiskLabel, number> = { 하: 1, 중: 2, 상: 3 };
+      docRiskLabel = riskItemsForReport.reduce<KorRiskLabel | undefined>(
+        (acc, cur) => {
+          if (!cur.levelKor) return acc;
+          if (!acc) return cur.levelKor;
+          return order[cur.levelKor] > order[acc] ? cur.levelKor : acc;
+        },
+        undefined,
+      );
+    }
+
+  return {
+    fileName: baseName,
+    aiSummary: {
+      // 🔹 여기서 docRiskLabel 사용
+      riskLabel: docRiskLabel,
+      fileDisplayName:
+        (analysis as any)?.file_display_name ?? activeDoc.name ?? baseName,
+      lawAnalysis:
+        (analysis as any)?.law_view ??
+        (analysis as any)?.law_analysis ??
+        (activeRisk as any)?.law_view,
+      caseAnalysis:
+        (analysis as any)?.case_view ??
+        (analysis as any)?.case_analysis ??
+        (activeRisk as any)?.case_view,
+      bullets,
+    },
+    uploadedDoc: {
       fileName: baseName,
-      aiSummary: {
-        riskLabel: toKorRiskLabel(
-          (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
-        ),
-        fileDisplayName:
-          (analysis as any)?.file_display_name ?? activeDoc.name ?? baseName,
-        lawAnalysis:
-          (analysis as any)?.law_view ??
-          (analysis as any)?.law_analysis ??
-          (activeRisk as any)?.law_view,
-        caseAnalysis:
-          (analysis as any)?.case_view ??
-          (analysis as any)?.case_analysis ??
-          (activeRisk as any)?.case_view,
-        bullets,
-      },
-      uploadedDoc: {
-        fileName: baseName,
-        description:
-          "업로드한 계약서를 확인하고 위험 조항과 매핑해 보세요.",
-      },
-      laws: laws ?? [],
-      cases: cases ?? [],
-    };
-  }, [activeDoc, activeRisk, analysisById, laws, cases]);
+      description:
+        "업로드한 계약서를 확인하고 위험 조항과 매핑해 보세요.",
+    },
+    laws: laws ?? [],
+    cases: cases ?? [],
+
+    riskySentences: riskItemsForReport,
+  };
+}, [activeDoc, activeRisk, analysisById, laws, cases, riskySentenceItems]);
+
 
   const isLawLoading = laws === null && !lawErr && lawInputs.length > 0;
   const hasNoLawQuery = lawInputs.length === 0;
