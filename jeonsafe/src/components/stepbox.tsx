@@ -13,12 +13,12 @@ const StepBox = ({ text, selected, used, disabled, onClick, className }: StepBox
 
     const strongShadow = {
         boxShadow:
-            "4px 0px 0px 0px rgba(62, 118, 164, 0.64), 4px 0px 0px 0px rgba(0,0,0,0.35)",
+            "4px 0px 0px 0px rgba(112, 158, 197, 0.64), 0px 0px 0px 0px rgba(0,0,0,0.35)",
     };
 
     const weakShadow = {
         boxShadow:
-            "2px 0px 0px 0px rgba(0,0,0,0.12), 2px 0px 0px 0px rgba(0,0,0,0.12)",
+            "1px 0px 0px 0px rgba(0,0,0,0.12), 1px 0px 0px 0px rgba(0,0,0,0.12)",
     };
 
     const shadowStyle = selected ? strongShadow : weakShadow;

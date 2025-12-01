@@ -35,7 +35,7 @@ export default function RiskPage() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [srcMap, setSrcMap] = useState<Record<number, string>>({});
   const [activeId, setActiveId] = useState<number | null>(null);
-
+  const [focusRiskIndex, setFocusRiskIndex] = useState<number | null>(null);
   const activeDoc = useMemo(
     () => docs.find((d) => d.id === activeId) ?? null,
     [docs, activeId],
@@ -163,6 +163,7 @@ export default function RiskPage() {
     const cached = getItem(activeId);
 
     setSelectedRiskId(null);
+    setFocusRiskIndex(null); 
     setRiskySentences(cached?.risky_sentences ?? []);
   }, [activeId, analysisDone]);
 
@@ -199,6 +200,7 @@ export default function RiskPage() {
         sentence,
         levelKor,
         page,
+        index: idx,
       };
     });
   }, [riskySentences]);
@@ -275,6 +277,7 @@ export default function RiskPage() {
                           onClick={() => {
                             setSelectedRiskId(item.id);
                             setPageNumber(item.page);
+                            setFocusRiskIndex(item.index);
                           }}
                         >
                           <p
@@ -300,6 +303,7 @@ export default function RiskPage() {
                 onPdfLoad={setNumPages}
                 onPdfError={handlePdfLoadError}
                 highlights={pdfHighlights}
+                focusRiskIndex={focusRiskIndex}
               />
             </div>
           </TwoPaneViewer>

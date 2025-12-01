@@ -24,10 +24,11 @@ type Props = {
   highlights?: PdfHighlight[];
   variant?: Variant;
 
-  /** 🔹 risk 모드에서 PDF 박스 스크롤 위치를 제어하기 위한 값 */
+  /** risk 모드에서 PDF 박스 스크롤 위치를 제어하기 위한 값 */
   scrollTop?: number;
-  /** 🔹 스크롤이 바뀔 때 부모에게 알려줌 */
+  /** 스크롤이 바뀔 때 부모에게 알려줌 */
   onScrollChange?: (v: number) => void;
+  focusRiskIndex?: number | null;
 };
 
 export default function DocViewerPanel({
@@ -42,6 +43,7 @@ export default function DocViewerPanel({
   variant = "card",
   scrollTop,
   onScrollChange,
+  focusRiskIndex, 
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -84,7 +86,7 @@ export default function DocViewerPanel({
     return <div className="text-sm text-gray-400">문서를 선택해 주세요.</div>;
   };
 
-  // 🔹 부모에서 넘겨준 scrollTop으로 스크롤 위치 복원
+  // 부모에서 넘겨준 scrollTop으로 스크롤 위치 복원
   useEffect(() => {
     if (variant !== "risk") return;
     if (!containerRef.current) return;
@@ -92,6 +94,43 @@ export default function DocViewerPanel({
 
     containerRef.current.scrollTop = scrollTop;
   }, [variant, scrollTop, pageNumber, activeDoc?.id]);
+
+  useEffect(() => {
+  if (variant !== "risk") return;
+  if (!containerRef.current) return;
+  if (focusRiskIndex == null) return;
+  if (!highlights || highlights.length === 0) return;
+
+  // 현재 페이지의 하이라이트 중에서 선택 index에 해당하는 것 찾기
+  const pageHighlights = highlights.filter((h) => h.page === pageNumber);
+  if (pageHighlights.length === 0) {
+    containerRef.current.scrollTop = 0;
+    return;
+  }
+
+  const target = pageHighlights.find((h) => h.index === focusRiskIndex);
+  if (!target) {
+    containerRef.current.scrollTop = 0;
+    return;
+  }
+
+  // PdfViewer에서도 동일한 width로 렌더링하므로, 여기서도 같은 비율 사용
+  const scale = PAGE_WIDTH / target.pageWidth;
+  const yPx = target.y * scale;
+  const hPx = target.h * scale;
+
+  const container = containerRef.current;
+  const containerHeight = container.clientHeight || 300;
+
+  // 선택된 문장 박스의 중앙이 박스 중앙쯤에 오도록 스크롤 위치 계산
+  const targetCenter = yPx + hPx / 2;
+  const nextTop = Math.max(targetCenter - containerHeight / 2, 0);
+
+  container.scrollTo({
+    top: nextTop,
+    behavior: "smooth",
+  });
+}, [variant, focusRiskIndex, pageNumber, highlights]);
 
   // risk 모드: PDF만
   if (variant === "risk") {
@@ -104,7 +143,7 @@ export default function DocViewerPanel({
           onScroll={(e) => {
             if (!onScrollChange) return;
             const target = e.currentTarget as HTMLDivElement;
-            onScrollChange(target.scrollTop); // 🔹 현재 스크롤 위치 부모에 저장
+            onScrollChange(target.scrollTop); // 현재 스크롤 위치 부모에 저장
           }}
         >
           <div className="p-3 w-full flex items-center justify-center">
