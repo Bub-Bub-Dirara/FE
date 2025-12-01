@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import PdfViewer from "./PdfViewer";
 import ImageViewer from "./ImageViewer";
 import PageNavigator from "./PdfPageNavigator";
@@ -21,11 +21,13 @@ type Props = {
   onPdfLoad?: (n: number) => void;
   onPdfError: (err: unknown) => void;
 
-  /** Risk/Simulate/Mapping 공통 하이라이트 */
   highlights?: PdfHighlight[];
-
-  /** 기본은 Simulate/Mapping용 카드 스타일 */
   variant?: Variant;
+
+  /** 🔹 risk 모드에서 PDF 박스 스크롤 위치를 제어하기 위한 값 */
+  scrollTop?: number;
+  /** 🔹 스크롤이 바뀔 때 부모에게 알려줌 */
+  onScrollChange?: (v: number) => void;
 };
 
 export default function DocViewerPanel({
@@ -38,8 +40,11 @@ export default function DocViewerPanel({
   onPdfError,
   highlights,
   variant = "card",
+  scrollTop,
+  onScrollChange,
 }: Props) {
-  // 공통: 실제 문서를 그리는 부분만 함수로
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const renderContent = (): ReactNode => {
     if (activeDoc && activeSrc) {
       if (activeDoc.type === "pdf") {
@@ -56,11 +61,7 @@ export default function DocViewerPanel({
       }
       if (activeDoc.type === "image") {
         return (
-          <ImageViewer
-            src={activeSrc}
-            width={PAGE_WIDTH}
-            alt={activeDoc.name}
-          />
+          <ImageViewer src={activeSrc} width={PAGE_WIDTH} alt={activeDoc.name} />
         );
       }
       return (
@@ -80,28 +81,59 @@ export default function DocViewerPanel({
       );
     }
 
-    return (
-      <div className="text-sm text-gray-400">문서를 선택해 주세요.</div>
-    );
+    return <div className="text-sm text-gray-400">문서를 선택해 주세요.</div>;
   };
 
-  // ─────────────────────────────
-  // 1) RiskPage 스타일: 그냥 뷰어만 꽉
-  // ─────────────────────────────
+  // 🔹 부모에서 넘겨준 scrollTop으로 스크롤 위치 복원
+  useEffect(() => {
+    if (variant !== "risk") return;
+    if (!containerRef.current) return;
+    if (scrollTop == null) return;
+
+    containerRef.current.scrollTop = scrollTop;
+  }, [variant, scrollTop, pageNumber, activeDoc?.id]);
+
+  // risk 모드: PDF만
   if (variant === "risk") {
-    return <>{renderContent()}</>;
+    return (
+      <section className="w-full">
+        <div
+          ref={containerRef}
+          className="rounded-lg border border-gray-200 bg-gray-50 shadow-sm overflow-auto flex items-start justify-center"
+          style={{ maxWidth: 740, height: 300 }}
+          onScroll={(e) => {
+            if (!onScrollChange) return;
+            const target = e.currentTarget as HTMLDivElement;
+            onScrollChange(target.scrollTop); // 🔹 현재 스크롤 위치 부모에 저장
+          }}
+        >
+          <div className="p-3 w-full flex items-center justify-center">
+            {renderContent()}
+          </div>
+        </div>
+
+        {activeDoc?.type === "pdf" && (
+          <div className="mt-3 flex justify-center">
+            <PageNavigator
+              page={pageNumber}
+              totalPages={numPages}
+              suffix="페이지"
+              onChange={onChangePage}
+            />
+          </div>
+        )}
+      </section>
+    );
   }
 
-  // ─────────────────────────────
-  // 2) Simulate / Mapping 카드 스타일
-  // ─────────────────────────────
+  // Simulate/Mapping 기본 카드 스타일
   return (
     <section className="w-full">
       <div className="rounded-xl border border-2 border-white bg-white p-3">
         <div className="w-full flex items-center justify-center mb-3">
           <div
             className="bg-gray-100 rounded-lg border border-gray-200 shadow-sm overflow-y-auto overflow-x-auto"
-            style={{ maxWidth: 720, height: 300 }} // 크기 조절 포인트
+            style={{ maxWidth: 720, height: 300 }}
           >
             <div className="p-3 flex items-center justify-center">
               {renderContent()}

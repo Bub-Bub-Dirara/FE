@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useProgress } from "../stores/useProgress";
 import TwoPaneViewer from "../components/TwoPaneViewer";
@@ -16,10 +17,11 @@ import {
   type RiskySentence,
   type ExtractRisksItem,
 } from "../lib/extractRisks";
+
 import { makePdfHighlightsFromRiskySentences } from "../lib/pdfHighlights";
-import PdfPageNavigator from "../components/viewers/PdfPageNavigator";
 import DocViewerPanel from "../components/viewers/DocViewerPanel";
 import AnalysisLoadingScreen from "../components/loading/AnalysisLoadingScreen";
+import { toKorRiskLabel, type KorRiskLabel } from "../lib/riskLabel";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -28,7 +30,6 @@ export default function RiskPage() {
   const setRiskItem = useRiskStore((s) => s.setItem);
   useEffect(() => setPos("pre", 1), [setPos]);
 
-  // UploadPage에서 넘어온 업로드 파일들
   const uploaded = useUploadStore((s) => s.uploaded);
 
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -47,15 +48,18 @@ export default function RiskPage() {
   const [numPages, setNumPages] = useState(1);
   const [pageNumber, setPageNumber] = useState(1);
   const [riskySentences, setRiskySentences] = useState<RiskySentence[]>([]);
-  const [analysisDone, setAnalysisDone] = useState(false); // 🔹 분석 작업 완료 여부
+  const [analysisDone, setAnalysisDone] = useState(false);
 
-  // 1) uploaded → docs / srcMap 세팅
+  // 선택한 위험문장
+  const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
+
+  // 1) uploaded → docs / srcMap
   useEffect(() => {
     (async () => {
       if (!uploaded || uploaded.length === 0) return;
 
-      // 업로드 바뀔 때마다 분석 상태 초기화
       setAnalysisDone(false);
+      setSelectedRiskId(null);
 
       const toDoc = (r: FileRecord): Doc => {
         const isPdf = r.content_type === "application/pdf";
@@ -73,24 +77,8 @@ export default function RiskPage() {
       const map: Record<number, string> = {};
       for (const r of uploaded) {
         try {
-          const raw = (await resolveViewUrl(r)) as unknown;
-
-          let url: string;
-          if (typeof raw === "string") {
-            url = raw;
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            "url" in (raw as Record<string, unknown>) &&
-            typeof (raw as { url: unknown }).url === "string"
-          ) {
-            url = (raw as { url: string }).url;
-          } else {
-            console.error("invalid download-url response:", raw);
-            continue;
-          }
-
-          map[r.id] = url;
+          const raw = (await resolveViewUrl(r)) as any;
+          map[r.id] = typeof raw === "string" ? raw : raw.url;
         } catch (e) {
           console.error("Failed to resolve URL:", r.id, e);
         }
@@ -105,17 +93,17 @@ export default function RiskPage() {
   }, [uploaded]);
 
   const handlePdfLoadError = async (err: unknown) => {
-    console.warn(" PDF Load Error:", err);
+    console.warn("PDF Load Error:", err);
     if (!activeId) return;
     try {
       const fresh = await getDownloadUrl(activeId);
       setSrcMap((m) => ({ ...m, [activeId]: fresh }));
     } catch (e) {
-      console.error(" Failed to refresh presigned URL", e);
+      console.error("Failed refresh URL", e);
     }
   };
 
-  // 2) 모든 문서에 대해 GPT 한 번씩 호출 → store에 캐싱
+  // 2) GPT 분석 캐싱
   useEffect(() => {
     if (!uploaded || uploaded.length === 0) return;
     if (docs.length === 0) return;
@@ -127,42 +115,32 @@ export default function RiskPage() {
       const { getItem } = useRiskStore.getState();
 
       try {
-        const targetDocs = docs; // 필요하면 docs.filter(d => d.type === "pdf") 로 좁힐 수 있음
-
-        for (const d of targetDocs) {
+        for (const d of docs) {
           if (cancelled) break;
 
           const url = srcMap[d.id];
-          if (!url) continue; // URL 없는 문서는 그냥 분석 안 함
+          if (!url) continue;
 
           const existing = getItem(d.id);
-          if (existing) continue; // 이미 캐싱된 문서는 건너뜀
+          if (existing) continue;
 
           try {
             const item = await extractRisksForUrl(url);
-
             const finalItem: ExtractRisksItem = item ?? {
               fileurl: url,
               risky_sentences: [],
             };
-
-            if (!cancelled) {
-              setRiskItem(d.id, finalItem);
-            }
+            if (!cancelled) setRiskItem(d.id, finalItem);
           } catch (e) {
-            console.error("extractRisksForUrl error for doc", d.id, e);
+            console.error("extractRisksForUrl error", e);
             if (!cancelled) {
-              const fallback: ExtractRisksItem = {
-                fileurl: url,
-                risky_sentences: [],
-              };
-              setRiskItem(d.id, fallback);
+              setRiskItem(d.id, { fileurl: url, risky_sentences: [] });
             }
           }
         }
       } finally {
         if (!cancelled) {
-          setAnalysisDone(true); // 🔹 루프가 어떻게 끝났든 "분석 단계는 끝남"
+          setAnalysisDone(true);
         }
       }
     };
@@ -174,7 +152,7 @@ export default function RiskPage() {
     };
   }, [uploaded, docs, srcMap, setRiskItem]);
 
-  // 3) 활성 문서 기준으로 캐시에서 risky_sentences 꺼내기
+  // 3) risky_sentences 세팅
   useEffect(() => {
     if (activeId == null) {
       setRiskySentences([]);
@@ -183,15 +161,64 @@ export default function RiskPage() {
 
     const { getItem } = useRiskStore.getState();
     const cached = getItem(activeId);
-    setRiskySentences(cached?.risky_sentences ?? []);
-  }, [activeId,analysisDone]);
 
-  // 4) 하이라이트 계산 (hook)
+    setSelectedRiskId(null);
+    setRiskySentences(cached?.risky_sentences ?? []);
+  }, [activeId, analysisDone]);
+
+  // 4) PDF 하이라이트
   const pdfHighlights = useMemo(
     () => makePdfHighlightsFromRiskySentences(riskySentences),
     [riskySentences],
   );
 
+  // 5) 위험문장 리스트
+  const riskList = useMemo(() => {
+    return (riskySentences ?? []).map((s, idx) => {
+      const sentence =
+        (s as any).sentence ??
+        (s as any).highlight_text ??
+        (s as any).text ??
+        (s as any).summary ??
+        (s as any).description ??
+        "";
+
+      const levelRaw =
+        (s as any).level ??
+        (s as any).risk_level ??
+        (s as any).risk_label ??
+        undefined;
+
+      const levelKor = toKorRiskLabel(levelRaw) as KorRiskLabel | undefined;
+
+      const firstPos = (s as any).positions?.[0];
+      const page = firstPos?.page ?? 1;
+
+      return {
+        id: `risk-${idx}`,
+        sentence,
+        levelKor,
+        page,
+      };
+    });
+  }, [riskySentences]);
+
+  // 선택 모드 / 전체 모드
+  const visibleRisks = useMemo(() => {
+    if (!selectedRiskId) return riskList;
+    return riskList.filter((r) => r.id === selectedRiskId);
+  }, [riskList, selectedRiskId]);
+
+  // 준비 체크
+  const ready =
+    uploaded.length > 0 &&
+    docs.length > 0 &&
+    Object.keys(srcMap).length > 0 &&
+    analysisDone;
+
+  if (!ready) return <AnalysisLoadingScreen />;
+
+  // 좌측 문서 리스트
   const left = (
     <DocList
       docs={docs}
@@ -203,52 +230,78 @@ export default function RiskPage() {
     />
   );
 
-  const rightHeader = {
-    title: activeDoc ? activeDoc.name : "문서 내용",
-  };
-
-  const rightFooter =
-    activeDoc?.type === "pdf" ? (
-      <PdfPageNavigator
-        page={pageNumber}
-        totalPages={numPages}
-        suffix="페이지"
-        onChange={(next) => setPageNumber(next)}
-      />
-    ) : null;
-
-  // 5) 로딩 상태 계산: 업로드 + docs + srcMap + 분석 단계 완료 여부
-  const hasUploaded = !!uploaded && uploaded.length > 0;
-  const hasDocs = docs.length > 0;
-  const hasSrcMap = Object.keys(srcMap).length > 0;
-  const docsReady = hasUploaded && hasDocs && hasSrcMap;
-
-  const isLoading = !docsReady || !analysisDone;
-
-  if (isLoading) {
-    return <AnalysisLoadingScreen />;
-  }
+  const rightHeader = { title: "위험 조항 분석" };
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <main className="flex-1">
-        <div className="w-full p-4 pt-4 pb-24 overflow-hidden">
-          <TwoPaneViewer
-            left={left}
-            rightHeader={rightHeader}
-            rightFooter={rightFooter}
-          >
-            <DocViewerPanel
-              variant="risk"
-              activeDoc={activeDoc}
-              activeSrc={activeSrc}
-              pageNumber={pageNumber}
-              numPages={numPages}
-              onChangePage={setPageNumber}
-              onPdfLoad={setNumPages}
-              onPdfError={handlePdfLoadError}
-              highlights={pdfHighlights}
-            />
+        <div className="w-full p-4 pb-24 overflow-hidden">
+          <TwoPaneViewer left={left} rightHeader={rightHeader}>
+            <div className="space-y-2">
+
+              {/* 위험 문장 목록 or 선택된 문장 */}
+              {riskList.length > 0 && (
+                <section className="w-full max-w-3xl mx-auto space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold text-[#113F67]">
+                      위험 문장 목록
+                    </h2>
+
+                    {selectedRiskId && (
+                      <button
+                        onClick={() => setSelectedRiskId(null)}
+                        className="text-xs px-2 py-1 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50"
+                      >
+                        전체보기
+                      </button>
+                    )}
+                  </div>
+
+                  <ul className="space-y-2">
+                    {visibleRisks.map((item) => {
+                      const toneClass =
+                        item.levelKor === "상"
+                          ? "bg-rose-100 text-rose-700"
+                          : item.levelKor === "중"
+                          ? "bg-amber-100 text-amber-700"
+                          : item.levelKor === "하"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-gray-100 text-gray-700";
+
+                      return (
+                        <li
+                          key={item.id}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            setSelectedRiskId(item.id);
+                            setPageNumber(item.page);
+                          }}
+                        >
+                          <p
+                            className={`px-3 py-2 rounded-lg text-sm font-medium ${toneClass}`}
+                          >
+                            {item.sentence}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+
+              {/* 선택된 문장 아래 PDF */}
+              <DocViewerPanel
+                variant="risk"
+                activeDoc={activeDoc}
+                activeSrc={activeSrc}
+                pageNumber={pageNumber}
+                numPages={numPages}
+                onChangePage={setPageNumber}
+                onPdfLoad={setNumPages}
+                onPdfError={handlePdfLoadError}
+                highlights={pdfHighlights}
+              />
+            </div>
           </TwoPaneViewer>
         </div>
       </main>
