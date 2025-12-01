@@ -9,12 +9,9 @@ import type { FileRecord } from "../types/file";
 
 import { useUploadStore } from "../stores/useUploadStore";
 import { useRiskStore } from "../stores/useRiskStore";
-import { getDownloadUrl, resolveViewUrl } from "../lib/files";
 
 import type { LawWithArticles } from "../types/law";
 import { http } from "../lib/http";
-import { makePdfHighlightsFromExtractItem } from "../lib/pdfHighlights";
-import DocViewerPanel from "../components/viewers/DocViewerPanel";
 import {
   RelatedCasesSection,
   RelatedLawsSection,
@@ -23,12 +20,16 @@ import AISummarySection from "../components/AISummarySection";
 import type { RiskySentence } from "../lib/extractRisks";
 import { useNavigate } from "react-router-dom";
 
-// GPT 분석 호출 유틸 (GET /be/api/files/{id}/download-url → POST /ai/gpt/analyze)
+// GPT 분석 호출 유틸
 import {
   analyzeFilesWithGpt,
   type AnalyzeItem,
 } from "../lib/analyzeEvidence";
-import { toKorRiskLabel } from "../lib/riskLabel"; 
+import {
+  toKorRiskLabel,
+  type KorRiskLabel,
+} from "../lib/riskLabel";
+
 // PDF 생성을 위한 라이브러리 (@react-pdf/renderer)
 import {
   pdf,
@@ -202,7 +203,6 @@ const reportStyles = StyleSheet.create({
   caseItem: {
     marginBottom: 8,
     paddingBottom: 4,
-    borderBottomWidth: 0.5,
   },
   caseTitle: {
     fontWeight: "bold",
@@ -266,7 +266,7 @@ function MappingReportDocument({ data }: { data: MappingReportData }) {
           )}
         </View>
 
-        {/* 업로드 문서 */}
+        {/* 업로드 문서 (텍스트 정보만) */}
         <View style={reportStyles.section}>
           <Text style={reportStyles.sectionTitle}>업로드 문서</Text>
           <Text>{uploadedDoc.fileName}</Text>
@@ -326,6 +326,7 @@ function MappingReportDocument({ data }: { data: MappingReportData }) {
 export default function MappingPage() {
   const { setPos } = useProgress();
   const navigate = useNavigate();
+
   useEffect(() => {
     // 사전대비 3단계 위치 표시
     setPos("pre", 2);
@@ -338,6 +339,7 @@ export default function MappingPage() {
 
   const riskItems = useRiskStore((s) => s.items);
 
+  // GPT 분석 결과 준비 (스토어에서 재사용)
   useEffect(() => {
     if (!uploaded || uploaded.length === 0) {
       setAnalysisByIdStore({});
@@ -360,7 +362,6 @@ export default function MappingPage() {
         const aiItems = await analyzeFilesWithGpt(uploaded as FileRecord[]);
         if (cancelled) return;
 
-        // 기존 분석 결과와 병합
         const nextAnalysis: Record<string, AnalyzeItem> = {
           ...analysisById,
         };
@@ -384,7 +385,6 @@ export default function MappingPage() {
       cancelled = true;
     };
   }, [uploaded, analysisById, setAnalysisByIdStore]);
-  // -------------------------------------------------------------------
 
   // 좌측 DocList용 문서 목록
   const docs: Doc[] = useMemo(
@@ -406,13 +406,6 @@ export default function MappingPage() {
   // 선택된 문서 id
   const [activeDocId, setActiveDocId] = useState<number>(() => docs[0]?.id ?? 0);
 
-  // 파일 id → presigned view URL
-  const [srcMap, setSrcMap] = useState<Record<number, string>>({});
-
-  // PDF 페이지 상태
-  const [numPages, setNumPages] = useState(1);
-  const [pageNumber, setPageNumber] = useState(1);
-
   // 좌측 패널 (업로드 문서 리스트)
   const left =
     docs.length > 0 ? (
@@ -428,34 +421,47 @@ export default function MappingPage() {
   const activeDoc: Doc | null =
     docs.find((d) => d.id === activeDocId) ?? docs[0] ?? null;
 
-  // presigned view URL 미리 받아두기
-  useEffect(() => {
-    (async () => {
-      if (!uploaded || uploaded.length === 0) return;
-
-      const map: Record<number, string> = {};
-      for (const file of uploaded as FileRecord[]) {
-        try {
-          const url = await resolveViewUrl(file);
-          if (file.id != null) {
-            map[file.id] = url;
-          }
-        } catch (e) {
-          console.error("Failed to resolve view URL in MappingPage:", e);
-        }
-      }
-      setSrcMap(map);
-    })();
-  }, [uploaded]);
-
-  const activeSrc = useMemo(() => {
-    if (!activeDoc || activeDoc.id == null) return null;
-    return srcMap[activeDoc.id] ?? null;
-  }, [activeDoc, srcMap]);
-
-  // 현재 문서에 대한 위험 분석 결과
+  // 현재 문서에 대한 위험 분석 결과 (2단계에서 저장된 것)
   const activeRisk =
     activeDoc && activeDoc.id != null ? riskItems?.[activeDoc.id] ?? null : null;
+
+  const riskySentenceItems = useMemo<
+  { sentence: string; reason: string; levelKor?: KorRiskLabel }[]
+>(() => {
+  const sentences = (activeRisk?.risky_sentences as RiskySentence[]) ?? [];
+  const result: { sentence: string; reason: string; levelKor?: KorRiskLabel }[] =
+    [];
+
+  for (const s of sentences) {
+    const sentence =
+      (s as any).sentence ??
+      (s as any).highlight_text ??
+      (s as any).text ??
+      (s as any).summary ??
+      (s as any).description ??
+      "";
+
+    const reason =
+      (s as any).reason ??
+      (s as any).summary ??
+      (s as any).description ??
+      "";
+
+    const levelRaw =
+      (s as any).level ??
+      (s as any).risk_level ??
+      (s as any).risk_label ??
+      undefined;
+
+    const levelKor = toKorRiskLabel(levelRaw) as KorRiskLabel | undefined;
+
+    if (!sentence && !reason) continue;
+
+    result.push({ sentence, reason, levelKor });
+  }
+
+  return result;
+}, [activeRisk]);
 
   // law_input / case_input 배열 추출 (risky_sentences 기준)
   const lawInputs = useMemo(
@@ -473,25 +479,6 @@ export default function MappingPage() {
         .filter((t): t is string => Boolean(t)) ?? [],
     [activeRisk],
   );
-
-  // PDF 하이라이트 정보
-  const pdfHighlights = useMemo(
-    () => makePdfHighlightsFromExtractItem(activeRisk),
-    [activeRisk],
-  );
-
-  const [docPanelOpen, setDocPanelOpen] = useState(true);
-
-  const handlePdfLoadError = async (err: unknown) => {
-    console.warn("PDF Load Error (mapping):", err);
-    if (!activeDoc || activeDoc.id == null) return;
-    try {
-      const fresh = await getDownloadUrl(activeDoc.id);
-      setSrcMap((m) => ({ ...m, [activeDoc.id as number]: fresh }));
-    } catch (e) {
-      console.error("Failed to refresh presigned URL (mapping)", e);
-    }
-  };
 
   // 관련 법령 / 판례 상태
   const [laws, setLaws] = useState<LawWithArticles[] | null>(null);
@@ -594,7 +581,7 @@ export default function MappingPage() {
     })();
   }, [caseInputs]);
 
-  //  리포트에 넣을 데이터 하나로 묶기
+  // 리포트에 넣을 데이터 하나로 묶기
   const reportData = useMemo<MappingReportData | null>(() => {
     if (!activeDoc) return null;
 
@@ -630,9 +617,7 @@ export default function MappingPage() {
           (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
         ),
         fileDisplayName:
-          (analysis as any)?.file_display_name ??
-          activeDoc.name ??
-          baseName,
+          (analysis as any)?.file_display_name ?? activeDoc.name ?? baseName,
         lawAnalysis:
           (analysis as any)?.law_view ??
           (analysis as any)?.law_analysis ??
@@ -656,7 +641,7 @@ export default function MappingPage() {
   const isLawLoading = laws === null && !lawErr && lawInputs.length > 0;
   const hasNoLawQuery = lawInputs.length === 0;
 
-  //  ReportButton이 호출하는 PDF 생성
+  // ReportButton이 호출하는 PDF 생성
   const onGenerateReport = async () => {
     if (!reportData) {
       alert(
@@ -718,7 +703,6 @@ export default function MappingPage() {
           title: downloadName,
           report_file_id: savedFile.id,
         });
-
       } catch (e) {
         console.error("리포트 업로드 / 스레드 생성 실패", e);
         alert(
@@ -738,8 +722,7 @@ export default function MappingPage() {
 
   const hasUploaded = !!uploaded && uploaded.length > 0;
   const hasDocs = docs.length > 0;
-  const hasSrcMap = Object.keys(srcMap).length > 0;
-  const docsReady = hasUploaded && hasDocs && hasSrcMap;
+  const docsReady = hasUploaded && hasDocs;
 
   const isLoading = !docsReady || !analysisReady;
 
@@ -759,44 +742,49 @@ export default function MappingPage() {
                 analysisById={analysisById}
               />
 
-              {/* 업로드 문서 미리보기 */}
-              <h2 className="text-xl font-bold mb-1 text-[#113F67] ml-3">
-                업로드 문서
-              </h2>
-              <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white mb-6">
-                <button
-                  type="button"
-                  onClick={() => setDocPanelOpen((v) => !v)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {activeDoc?.name ?? "문서를 선택하세요"}
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      업로드한 계약서를 확인하고 위험 조항과 매핑해 보세요.
-                    </p>
-                  </div>
-                  <span className="ml-4 text-[11px] text-gray-400">
-                    {docPanelOpen ? "접기" : "자세히"}
-                  </span>
-                </button>
+              {/* 위험 문장 + 이유 리스트 (2단계 결과 기반) */}
+              {riskySentenceItems.length > 0 && (
+                <section className="w-full max-w-3xl mx-auto space-y-2 mb-6">
+                  <h2 className="text-xl font-bold mb-1 ml-3 text-[#113F67]">
+                    위험 문장 목록
+                  </h2>
 
-                {docPanelOpen && (
-                  <div className="border-t border-gray-200">
-                    <DocViewerPanel
-                      activeDoc={activeDoc}
-                      activeSrc={activeSrc}
-                      pageNumber={pageNumber}
-                      numPages={numPages}
-                      onChangePage={setPageNumber}
-                      onPdfLoad={setNumPages}
-                      onPdfError={handlePdfLoadError}
-                      highlights={pdfHighlights}
-                    />
+                  <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <ul className="mt-1 space-y-4 text-[13px] leading-relaxed text-gray-800 list-none pl-0">
+                      {riskySentenceItems.map((item, idx) => {
+                        return (
+                          <li key={idx}>
+                          {item.sentence && (
+                            <p
+                              className="font-semibold text-gray-900 text-[15px] px-1 py-0.5 rounded"
+                              style={{
+                                backgroundColor:
+                                  item.levelKor === "상"
+                                    ? "rgba(255, 0, 0, 0.15)"
+                                  : item.levelKor === "중"
+                                    ? "rgba(255, 165, 0, 0.15)"
+                                  : item.levelKor === "하"
+                                    ? "rgba(0, 200, 0, 0.15)"
+                                  : "transparent",
+                              }}
+                            >
+                              {item.sentence}
+                            </p>
+                          )}
+
+                          {item.reason && (
+                            <p className="mt-1 px-1 text-[13px] text-gray-700">
+                              {item.reason}
+                            </p>
+                          )}
+                        </li>
+                        );
+                      })}
+                    </ul>
                   </div>
-                )}
-              </div>
+                </section>
+              )}
+
 
               {/* 관련 법령 조항 */}
               <RelatedLawsSection
@@ -813,7 +801,7 @@ export default function MappingPage() {
         </div>
       </main>
 
-       <ReportButton
+      <ReportButton
         onGenerate={onGenerateReport}
         onReset={handleGoRecords}
         label="리포트 저장"
