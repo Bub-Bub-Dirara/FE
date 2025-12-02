@@ -382,7 +382,7 @@ export default function SimulatePage() {
 
   const activeReasons = useMemo(
     () => (activeAnalysis?.rating?.reasons ?? []) as string[],
-    [activeAnalysis]
+    [activeAnalysis],
   );
 
   const reasonCardClass =
@@ -486,16 +486,26 @@ export default function SimulatePage() {
     };
   }, [uploaded, analysisById, setAnalysisByIdStore]);
 
-  // === 검색용 쿼리 추출 ===
-  const lawQuery = uploaded
-    .map((file) => analysisById[String(file.id)]?.law_input?.trim())
-    .filter((v): v is string => !!v && v.length > 0)
-    .join("\n");
+  // === 검색용 쿼리 추출 (현재 선택된 문서 기준) ===
+  const lawQuery = useMemo(() => {
+    if (!activeDoc || activeDoc.id == null) return "";
 
-  const caseQuery = uploaded
-    .map((file) => analysisById[String(file.id)]?.case_input?.trim())
-    .filter((v): v is string => !!v && v.length > 0)
-    .join("\n");
+    const analysis = analysisById[String(activeDoc.id)] as
+      | AnalyzeItem
+      | undefined;
+
+    return analysis?.law_input?.trim() ?? "";
+  }, [activeDoc, analysisById]);
+
+  const caseQuery = useMemo(() => {
+    if (!activeDoc || activeDoc.id == null) return "";
+
+    const analysis = analysisById[String(activeDoc.id)] as
+      | AnalyzeItem
+      | undefined;
+
+    return analysis?.case_input?.trim() ?? "";
+  }, [activeDoc, analysisById]);
 
   // === 관련 법령 검색 (/ai/laws/search) ===
   useEffect(() => {
@@ -570,58 +580,54 @@ export default function SimulatePage() {
 
   // 리포트에 넣을 데이터 하나로 묶기 (mappingPage와 동일 로직)
   const reportData = useMemo<SimulateReportData | null>(() => {
-  if (!activeDoc) return null;
+    if (!activeDoc) return null;
 
-  const baseName = activeDoc.name ?? "계약서.pdf";
-  const analysis: AnalyzeItem | undefined = activeAnalysis;
+    const baseName = activeDoc.name ?? "계약서.pdf";
+    const analysis: AnalyzeItem | undefined = activeAnalysis;
 
-  // 화면에서 쓰는 위험도 / 이유 그대로 사용
-  const ratingLabelForReport =
-    activeRatingKor ??
-    toKorRiskLabel(
-      (analysis as any)?.risk_level ||
-        (activeRisk as any)?.risk_level,
-    ) ??
-    undefined;
+    // 화면에서 쓰는 위험도 / 이유 그대로 사용
+    const ratingLabelForReport =
+      activeRatingKor ??
+      toKorRiskLabel(
+        (analysis as any)?.risk_level || (activeRisk as any)?.risk_level,
+      ) ??
+      undefined;
 
-  const bullets = activeReasons ?? [];
+    const bullets = activeReasons ?? [];
 
-  return {
-    fileName: baseName,
-    aiSummary: {
-      riskLabel: ratingLabelForReport,
-      fileDisplayName:
-        (analysis as any)?.file_display_name ??
-        activeDoc.name ??
-        baseName,
-      lawAnalysis:
-        (analysis as any)?.law_view ??
-        (analysis as any)?.law_analysis ??
-        (activeRisk as any)?.law_view,
-      caseAnalysis:
-        (analysis as any)?.case_view ??
-        (analysis as any)?.case_analysis ??
-        (activeRisk as any)?.case_view,
-      bullets,
-    },
-    uploadedDoc: {
+    return {
       fileName: baseName,
-      description:
-        "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
-    },
-    laws: laws ?? [],
-    cases: cases ?? [],
-  };
-}, [
-  activeDoc,
-  activeRisk,
-  activeAnalysis,
-  laws,
-  cases,
-  activeRatingKor,
-  activeReasons,
-]);
-
+      aiSummary: {
+        riskLabel: ratingLabelForReport,
+        fileDisplayName:
+          (analysis as any)?.file_display_name ?? activeDoc.name ?? baseName,
+        lawAnalysis:
+          (analysis as any)?.law_view ??
+          (analysis as any)?.law_analysis ??
+          (activeRisk as any)?.law_view,
+        caseAnalysis:
+          (analysis as any)?.case_view ??
+          (analysis as any)?.case_analysis ??
+          (activeRisk as any)?.case_view,
+        bullets,
+      },
+      uploadedDoc: {
+        fileName: baseName,
+        description:
+          "AI 분석 결과를 기반으로 사후처리 전략을 검토해 보세요.",
+      },
+      laws: laws ?? [],
+      cases: cases ?? [],
+    };
+  }, [
+    activeDoc,
+    activeRisk,
+    activeAnalysis,
+    laws,
+    cases,
+    activeRatingKor,
+    activeReasons,
+  ]);
 
   const left = (
     <DocList docs={docs} activeId={activeDocId} onSelect={setActiveDocId} />
@@ -703,7 +709,6 @@ export default function SimulatePage() {
           report_file_id: savedFile.id,
         });
 
-        // (원하면 여기서 toast 띄우거나, SideDrawer 리프레시 트리거해도 됨)
       } catch (e) {
         console.error("리포트 업로드 / 스레드 생성 실패", e);
         alert(
@@ -760,8 +765,6 @@ export default function SimulatePage() {
                   </div>
                 </section>
               )}
-
-
 
               <RelatedLawsSection
                 laws={laws}
